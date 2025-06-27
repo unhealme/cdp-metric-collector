@@ -1,0 +1,2 @@
+class HTTPNotOK(ValueError):
+    pass
