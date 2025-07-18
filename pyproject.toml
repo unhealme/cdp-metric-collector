@@ -4,41 +4,42 @@ build-backend = "hatchling.build"
 
 [project]
 name = "cdp-metric-collector"
-version = "0.1.0"
 description = "Cloudera CDP Metric Collector"
+dynamic = ["version"]
 readme = "DONTREADME.md"
 maintainers = [{ name = "unhealme", email = "o2tongpethuk@gmail.com" }]
 requires-python = ">=3.11"
 dependencies = [
-    "aiohttp[speedups]>=3.12.13",
-    "hdfs[kerberos];sys_platform!='win32'",
+    "aiohttp[speedups]",
     "hdfs;sys_platform=='win32'",
-    "httpx-gssapi>=0.4",
-    "httpx[http2]>=0.28.1",
-    "impyla[kerberos]>=0.21.0;sys_platform!='win32'",
-    "impyla>=0.21.0;sys_platform=='win32'",
-    "msgspec>=0.19.0",
+    "hdfs[kerberos];sys_platform!='win32'",
+    "httpx-gssapi",
+    "httpx[http2]",
+    "impyla;sys_platform=='win32'",
+    "impyla[kerberos];sys_platform!='win32'",
+    "msgspec",
 ]
 
 [dependency-groups]
-dev = ["ruff>=0.12.0"]
+dev = ["ruff"]
+
+[tool.hatch.version]
+path = "cdp_metric_collector/__init__.py"
 
 [project.scripts]
-auto-hdfs-rebalance = "cm_bin.auto_hdfs_rebalance:__main__"
-auto-yqm-config = "cm_bin.auto_yqm_config:__main__"
-export-cm-health-issues = "cm_bin.export_cm_health_issues:__main__"
-export-cm-hosts = "cm_bin.export_cm_hosts:__main__"
-export-cm-users = "cm_bin.export_cm_users:__main__"
-export-hdfs-usage-report = "cm_bin.export_hdfs_usage_report:__main__"
-export-hdfs-utilization = "cm_bin.export_hdfs_utilization:main"
-export-hive-query = "cm_bin.export_hive_query:__main__"
-export-ranger-audit-log = "cm_bin.export_ranger_audit_log:__main__"
-export-spark-history = "cm_bin.export_spark_history:__main__"
-export-yarn-qm = "cm_bin.export_yarn_qm:__main__"
-get-hourly-pool-stats = "cm_bin.get_hourly_pool_stats:__main__"
-get-ranger-last-access = "cm_bin.get_ranger_last_access:__main__"
-get-ranger-mapping = "cm_bin.get_ranger_mapping:__main__"
-query-cm-metrics = "cm_bin.query_cm_metrics:__main__"
-
-[tool.hatch.build.targets.wheel]
-packages = ["cm_bin", "cm_lib"]
+auto-hdfs-rebalance = "cdp_metric_collector.cm_bin.auto_hdfs_rebalance:__main__"
+auto-yqm-config = "cdp_metric_collector.cm_bin.auto_yqm_config:__main__"
+export-cm-health-issues = "cdp_metric_collector.cm_bin.export_cm_health_issues:__main__"
+export-cm-hosts = "cdp_metric_collector.cm_bin.export_cm_hosts:__main__"
+export-cm-users = "cdp_metric_collector.cm_bin.export_cm_users:__main__"
+export-disk-failures = "cdp_metric_collector.cm_bin.export_disk_failures:__main__"
+export-hdfs-usage-report = "cdp_metric_collector.cm_bin.export_hdfs_usage_report:__main__"
+export-hdfs-utilization = "cdp_metric_collector.cm_bin.export_hdfs_utilization:main"
+export-hive-query = "cdp_metric_collector.cm_bin.export_hive_query:__main__"
+export-ranger-audit-log = "cdp_metric_collector.cm_bin.export_ranger_audit_log:__main__"
+export-spark-history = "cdp_metric_collector.cm_bin.export_spark_history:__main__"
+export-yarn-qm = "cdp_metric_collector.cm_bin.export_yarn_qm:__main__"
+get-hourly-pool-stats = "cdp_metric_collector.cm_bin.get_hourly_pool_stats:__main__"
+get-ranger-last-access = "cdp_metric_collector.cm_bin.get_ranger_last_access:__main__"
+get-ranger-mapping = "cdp_metric_collector.cm_bin.get_ranger_mapping:__main__"
+query-cm-metrics = "cdp_metric_collector.cm_bin.query_cm_metrics:__main__"
