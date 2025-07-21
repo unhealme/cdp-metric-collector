@@ -5,7 +5,11 @@ import csv
 import logging
 import sqlite3
 import sys
-from argparse import ArgumentDefaultsHelpFormatter, ArgumentParser
+from argparse import (
+    ArgumentDefaultsHelpFormatter,
+    ArgumentParser,
+    BooleanOptionalAction,
+)
 from contextlib import contextmanager
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -20,15 +24,16 @@ from cdp_metric_collector.cm_lib.utils import (
     wrap_async,
 )
 
+from .export_cm_metrics import CMMetricsClient as _CMMetricsClient
+from .export_cm_metrics import ContentType, RollupType
 from .export_yarn_qm import YQMCLient
-from .query_cm_metrics import CMMetricsClient as _CMMetricsClient
-from .query_cm_metrics import ContentType, RollupType
 
 TYPE_CHECKING = False
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
 logger = logging.getLogger(__name__)
+prog: str | None = None
 
 
 class Arguments(ARGSWithAuthBase):
@@ -198,6 +203,7 @@ async def main(_args: "Sequence[str] | None" = None):
 
 def parse_args(args: "Sequence[str] | None" = None):
     parser = ArgumentParser(
+        prog=prog,
         add_help=False,
         formatter_class=ArgumentDefaultsHelpFormatter,
     )
@@ -228,7 +234,8 @@ def parse_args(args: "Sequence[str] | None" = None):
     )
     parser.add_argument(
         "--csv",
-        action="store_true",
+        action=BooleanOptionalAction,
+        default=False,
         help="format result as CSV",
         dest="as_csv",
     )
@@ -286,9 +293,3 @@ def parse_args(args: "Sequence[str] | None" = None):
         dest="auth_header",
     )
     return parser.parse_args(args, Arguments())
-
-
-def __main__():
-    import asyncio
-
-    asyncio.run(main())

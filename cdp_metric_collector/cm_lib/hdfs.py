@@ -20,7 +20,7 @@ warnings.filterwarnings("ignore", category=InsecureRequestWarning)
 
 class HDFSClientBase(KerberosClient):
     def __init__(self, url: str | None = None):
-        def find_name(root: ET.ElementTree["Any"], path: str, name: str):
+        def find_name(root: "ET.ElementTree[Any]", path: str, name: str):
             for i in root.iterfind(path):
                 match i.find("name"), i.find("value"):
                     case ET.Element() as iname, ET.Element() as value:

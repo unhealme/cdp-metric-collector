@@ -29,6 +29,7 @@ if TYPE_CHECKING:
     from typing import Any
 
 logger = logging.getLogger(__name__)
+prog: str | None = None
 
 
 class Arguments(ARGSBase):
@@ -265,9 +266,3 @@ def parse_args(args: "Sequence[str] | None" = None):
         dest="auth_basic",
     )
     return parser.parse_args(args, Arguments())
-
-
-def __main__():
-    import asyncio
-
-    asyncio.run(main())

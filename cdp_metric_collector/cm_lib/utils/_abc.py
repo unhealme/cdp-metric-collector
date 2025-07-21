@@ -77,7 +77,7 @@ class ARGSWithAuthBase(ARGSBase):
                 self.auth_header,
             )
         ):
-            from cm_lib.config import CM_AUTH
+            from cdp_metric_collector.cm_lib.config import CM_AUTH
 
             if CM_AUTH is None:
                 return None
@@ -85,7 +85,7 @@ class ARGSWithAuthBase(ARGSBase):
         elif self.auth_config:
             return self.auth_config
         else:
-            from cm_lib.cm.auth import CMAuth
+            from cdp_metric_collector.cm_lib.cm.auth import CMAuth
 
             if self.auth_basic:
                 user, passw = self.auth_basic

@@ -35,6 +35,7 @@ if TYPE_CHECKING:
     from urllib3 import HTTPResponse
 
 logger = logging.getLogger(__name__)
+prog: str | None = None
 
 
 class AppStatus(Enum):
@@ -318,6 +319,7 @@ class Arguments(ARGSBase):
 
 def parse_args(args: "Sequence[str] | None" = None):
     parser = argparse.ArgumentParser(
+        prog=prog,
         add_help=False,
         formatter_class=argparse.RawTextHelpFormatter,
     )
@@ -384,7 +386,3 @@ def parse_args(args: "Sequence[str] | None" = None):
         dest="status",
     )
     return parser.parse_args(args, Arguments())
-
-
-def __main__():
-    asyncio.run(main())

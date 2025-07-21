@@ -46,6 +46,7 @@ HeaderField = (
     "File and Directory Count",
 )
 logger = logging.getLogger(__name__)
+prog: str | None = None
 
 
 class Arguments(ARGSWithAuthBase):
@@ -188,6 +189,7 @@ async def main(_args: "Sequence[str] | None" = None):
 
 def parse_args(args: "Sequence[str] | None" = None):
     parser = ArgumentParser(
+        prog=prog,
         add_help=False,
         formatter_class=RawTextHelpFormatter,
     )
@@ -293,7 +295,3 @@ def parse_args(args: "Sequence[str] | None" = None):
     )
     parser.set_defaults(parser=parser)
     return parser.parse_args(args, Arguments())
-
-
-def __main__():
-    asyncio.run(main())

@@ -17,7 +17,8 @@ dependencies = [
     "httpx[http2]",
     "impyla;sys_platform=='win32'",
     "impyla[kerberos];sys_platform!='win32'",
-    "msgspec",
+    "msgspec[yaml]",
+    "uvloop;sys_platform!='win32'",
 ]
 
 [dependency-groups]
@@ -27,19 +28,4 @@ dev = ["ruff"]
 path = "cdp_metric_collector/__init__.py"
 
 [project.scripts]
-auto-hdfs-rebalance = "cdp_metric_collector.cm_bin.auto_hdfs_rebalance:__main__"
-auto-yqm-config = "cdp_metric_collector.cm_bin.auto_yqm_config:__main__"
-export-cm-health-issues = "cdp_metric_collector.cm_bin.export_cm_health_issues:__main__"
-export-cm-hosts = "cdp_metric_collector.cm_bin.export_cm_hosts:__main__"
-export-cm-users = "cdp_metric_collector.cm_bin.export_cm_users:__main__"
-export-disk-failures = "cdp_metric_collector.cm_bin.export_disk_failures:__main__"
-export-hdfs-usage-report = "cdp_metric_collector.cm_bin.export_hdfs_usage_report:__main__"
-export-hdfs-utilization = "cdp_metric_collector.cm_bin.export_hdfs_utilization:main"
-export-hive-query = "cdp_metric_collector.cm_bin.export_hive_query:__main__"
-export-ranger-audit-log = "cdp_metric_collector.cm_bin.export_ranger_audit_log:__main__"
-export-spark-history = "cdp_metric_collector.cm_bin.export_spark_history:__main__"
-export-yarn-qm = "cdp_metric_collector.cm_bin.export_yarn_qm:__main__"
-get-hourly-pool-stats = "cdp_metric_collector.cm_bin.get_hourly_pool_stats:__main__"
-get-ranger-last-access = "cdp_metric_collector.cm_bin.get_ranger_last_access:__main__"
-get-ranger-mapping = "cdp_metric_collector.cm_bin.get_ranger_mapping:__main__"
-query-cm-metrics = "cdp_metric_collector.cm_bin.query_cm_metrics:__main__"
+cdp-metric-collector = "cdp_metric_collector:main"

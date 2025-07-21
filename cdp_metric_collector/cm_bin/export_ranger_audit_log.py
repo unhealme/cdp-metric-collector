@@ -5,7 +5,6 @@ import csv
 import logging
 import sys
 from argparse import ArgumentParser, RawTextHelpFormatter
-from collections.abc import Sequence
 from datetime import date, datetime
 from io import TextIOWrapper
 from pathlib import Path
@@ -25,7 +24,12 @@ from cdp_metric_collector.cm_lib.utils import (
     wrap_async,
 )
 
+TYPE_CHECKING = False
+if TYPE_CHECKING:
+    from collections.abc import Sequence
+
 logger = logging.getLogger(__name__)
+prog: str | None = None
 
 _AT = TypeVar("_AT", Path | int, None)
 
@@ -156,10 +160,10 @@ async def fetch_data(
 
 
 @overload
-async def main(args: Arguments[Path | int]) -> None: ...
+async def fetch_audit_log(args: Arguments[Path | int]) -> None: ...
 @overload
-async def main(args: Arguments[None]) -> list[tuple[str, str, datetime]]: ...
-async def main(args: Arguments[Path | int] | Arguments[None]):
+async def fetch_audit_log(args: Arguments[None]) -> list[tuple[str, str, datetime]]: ...
+async def fetch_audit_log(args: Arguments[Path | int] | Arguments[None]):
     if args.auth_config:
         user = args.auth_config.username
         passw = args.auth_config.password
@@ -209,8 +213,17 @@ async def main(args: Arguments[Path | int] | Arguments[None]):
                             uid.add(i.requestUser)
 
 
-def parse_args(args: Sequence[str] | None = None) -> Arguments[Path | int]:
+async def main(_args: "Sequence[str] | None" = None):
+    args = parse_args(_args)
+    setup_logging((logger,), debug=args.verbose)
+    logger.debug("got args %s", args)
+    config.load_all()
+    await fetch_audit_log(args)
+
+
+def parse_args(args: "Sequence[str] | None" = None) -> Arguments[Path | int]:
     parser = ArgumentParser(
+        prog=prog,
         add_help=False,
         formatter_class=RawTextHelpFormatter,
     )
@@ -285,13 +298,3 @@ def parse_args(args: Sequence[str] | None = None) -> Arguments[Path | int]:
         dest="auth_basic",
     )
     return parser.parse_args(args, Arguments())
-
-
-def __main__():
-    import asyncio
-
-    args = parse_args()
-    setup_logging((logger,), debug=args.verbose)
-    logger.debug("got args %s", args)
-    config.load_all()
-    asyncio.run(main(args))

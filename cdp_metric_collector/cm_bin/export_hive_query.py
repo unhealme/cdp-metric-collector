@@ -39,8 +39,7 @@ if TYPE_CHECKING:
     from typing import Any
 
 logger = logging.getLogger(__name__)
-
-csv.field_size_limit(sys.maxsize)
+prog: str | None = None
 
 
 class CMD(Enum):
@@ -345,6 +344,7 @@ async def main(_args: "Sequence[str] | None" = None):
                     )
                 )
             case CMD.HISTORY:
+                csv.field_size_limit(sys.maxsize)
                 with TextIOWrapper(
                     open(args.output, "wb", 0),
                     encoding="utf-8",
@@ -383,6 +383,7 @@ async def main(_args: "Sequence[str] | None" = None):
 
 def parse_args(args: "Sequence[str] | None" = None):
     parser = argparse.ArgumentParser(
+        prog=prog,
         add_help=False,
         formatter_class=argparse.RawTextHelpFormatter,
     )
@@ -445,7 +446,3 @@ def parse_args(args: "Sequence[str] | None" = None):
         "query_id", action="store", metavar="APPLICATION_ID|QUERY_ID", type=str
     )
     return parser.parse_args(args, Arguments())
-
-
-def __main__():
-    asyncio.run(main())

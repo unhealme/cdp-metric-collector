@@ -26,6 +26,7 @@ if TYPE_CHECKING:
     from collections.abc import Sequence
 
 logger = logging.getLogger(__name__)
+prog: str | None = None
 
 
 class Arguments(ARGSWithAuthBase):
@@ -127,6 +128,7 @@ async def main(_args: "Sequence[str] | None" = None):
 
 def parse_args(args: "Sequence[str] | None" = None):
     parser = ArgumentParser(
+        prog=prog,
         add_help=False,
         formatter_class=RawTextHelpFormatter,
     )
@@ -231,9 +233,3 @@ def parse_args(args: "Sequence[str] | None" = None):
         dest="auth_header",
     )
     return parser.parse_args(args, Arguments())
-
-
-def __main__():
-    import asyncio
-
-    asyncio.run(main())

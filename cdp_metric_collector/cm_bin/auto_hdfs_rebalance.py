@@ -20,6 +20,7 @@ from cdp_metric_collector.cm_lib.utils import (
 )
 
 logger = logging.getLogger(__name__)
+prog: str | None = None
 
 
 class CMD(Enum):
@@ -126,6 +127,7 @@ async def main(_args: Sequence[str] | None = None):
 
 def parse_args(args: Sequence[str] | None = None):
     parser = argparse.ArgumentParser(
+        prog=prog,
         add_help=False,
         formatter_class=argparse.RawTextHelpFormatter,
     )
@@ -194,9 +196,3 @@ def parse_args(args: Sequence[str] | None = None):
         nargs="?",
     )
     return parser.parse_args(args, Arguments())
-
-
-def __main__():
-    import asyncio
-
-    asyncio.run(main())

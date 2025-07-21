@@ -8,6 +8,8 @@ from pathlib import Path
 
 from cdp_metric_collector.cm_lib.utils import ARGSBase, setup_logging
 
+prog: str | None = None
+
 
 class Columns(Enum):
     DB = "Database"
@@ -39,6 +41,7 @@ def parse_args():
         return [Columns[x.strip().upper()] for x in cols.split(",")]
 
     parser = ArgumentParser(
+        prog=prog,
         add_help=False,
         formatter_class=RawTextHelpFormatter,
     )
