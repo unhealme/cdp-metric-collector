@@ -289,7 +289,7 @@ async def export_data(
 
 async def main(_args: "Sequence[str] | None" = None):
     args = parse_args(_args)
-    setup_logging((logger,), debug=args.verbose)
+    setup_logging(("cdp_metric_collector",), debug=args.verbose)
     logger.debug("got args %s", args)
     config.load_all()
     async with HUEQPClient(config.HUEQP_HOST) as client:

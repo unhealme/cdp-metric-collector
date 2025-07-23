@@ -1,16 +1,20 @@
+import logging
 from pathlib import Path
 
 from cdp_metric_collector.cm_lib import config
 
 from .structs import Config
 
+logger = logging.getLogger(__name__)
+
 
 def load_all():
-    cp = Path.home() / ".config" / "cdp_metric_collector"
-    if not cp.exists():
-        cp.mkdir(0o755, parents=True)
-    c = Config.decode_yaml((cp / "config.yaml").read_bytes())
-    load_with(c)
+    cf = Path.home() / ".config" / "cdp_metric_collector" / "config.yaml"
+    try:
+        c = Config.decode_yaml(cf.read_bytes())
+        load_with(c)
+    except Exception as e:
+        logger.warning("not loading any config due to error: %s", e)
 
 
 def load_with(c: Config):

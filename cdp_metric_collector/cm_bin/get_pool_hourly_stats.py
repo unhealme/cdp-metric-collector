@@ -1,4 +1,4 @@
-__version__ = "b2025.06.26-0"
+__version__ = "r2025.07.23-0"
 
 
 import csv
@@ -72,7 +72,7 @@ class CMMetricsClient(_CMMetricsClient):
 async def fetch_metrics(auth: CMAuth):
     async with CMMetricsClient(config.CM_HOST, auth) as client:
         data = await client.timedata(
-            "select allocated_vcores,allocated_memory_mb",
+            "select allocated_vcores,allocated_memory_mb,apps_pending,apps_running",
             from_dt=(datetime.now() - timedelta(days=1)).replace(
                 hour=0, minute=0, second=0, microsecond=0
             ),
@@ -85,25 +85,30 @@ async def fetch_metrics(auth: CMAuth):
 
 
 async def fetch_queues(auth: CMAuth):
+    """{pool_name: (core, mem, max_apps)}"""
     async with YQMCLient(config.CM_HOST, auth) as client:
         queues = await client.get_data()
     return {
         x.queuePath: (
             int(x.effectiveMaxResource.vcores, 10),
             int(x.effectiveMaxResource.memory, 10),
+            int(x.properties.maxApplications, 10),
         )
         for x in queues.queues
+        if x.queuePath.count(".") >= 2
     }
 
 
 def fetch_queues_from_file(fp: Path | str):
-    data: dict[str, tuple[int, int]] = {}
+    """{pool_name: (core, mem, max_apps)}"""
+    data: dict[str, tuple[int, int, int]] = {}
     with open(fp, "r", newline="", encoding="utf-8") as f:
         fr = csv.reader(f, delimiter="|")
         next(fr)
         for row in fr:
-            vcore, mem = (x.partition(" ")[0] for x in row[7].split(", "))
-            data[row[0]] = (int(vcore, 10), int(mem, 10))
+            if row[3]:
+                vcore, mem = (x.partition(" ")[0] for x in row[7].split(", "))
+                data[row[0]] = (int(vcore, 10), int(mem, 10), int(row[13], 10))
     return data
 
 
@@ -127,9 +132,6 @@ def open_db(fp: "Path | str"):
         at_max DATETIME,
         aggregations INTEGER,
         CONSTRAINT PK PRIMARY KEY (`timestamp`,pool,metric))""")
-        cursor.execute(
-            "CREATE UNIQUE INDEX IF NOT EXISTS IDX ON pool_hourly (`timestamp`,pool,metric)"
-        )
         try:
             yield cursor
         finally:
@@ -139,7 +141,7 @@ def open_db(fp: "Path | str"):
 
 async def main(_args: "Sequence[str] | None" = None):
     args = parse_args(_args)
-    setup_logging((logger, "cm_lib"), debug=args.verbose)
+    setup_logging(("cdp_metric_collector",), debug=args.verbose)
     logger.debug("got args %s", args)
 
     config.load_all()
@@ -186,19 +188,20 @@ async def main(_args: "Sequence[str] | None" = None):
             )
             for data in cm_metric.join(cm_queues):
                 if data.pool.count(".") >= 2:
-                    fw.writerow(data)
+                    fw.writerow(data.to_row())
     else:
         if not args.output:
             args.parser.error("No output file is specified")
         with open_db(args.output) as cursor:
-            for data in cm_metric.join(cm_queues):
-                if data.pool.count(".") >= 2:
-                    cursor.execute(
-                        "insert or ignore into pool_hourly (`timestamp`, pool, metric, value,"
-                        " perc_value, min, perc_min, at_min, max, perc_max, at_max, "
-                        "aggregations) values (?, ?, ?, ?, ?, ?, ? ,? ,? ,?, ?, ?)",
-                        data,
-                    )
+            cursor.executemany(
+                "insert or ignore into pool_hourly values "
+                "(?, ?, ?, ?, ?, ?, ? ,? ,? ,?, ?, ?)",
+                (
+                    data
+                    for data in cm_metric.join(cm_queues)
+                    if data.pool.count(".") >= 2
+                ),
+            )
 
 
 def parse_args(args: "Sequence[str] | None" = None):

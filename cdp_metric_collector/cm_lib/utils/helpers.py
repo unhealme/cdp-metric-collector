@@ -34,7 +34,7 @@ def strfdelta(tdelta: "timedelta", fmt: str):
 
 def calc_perc(value: float, other: float | None):
     if other is None:
-        return ""
+        return None
     perc = value / max(other, 1)
     return f"{perc:.2%}"
 

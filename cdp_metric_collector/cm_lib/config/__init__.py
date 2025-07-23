@@ -11,7 +11,7 @@ if TYPE_CHECKING:
 
 # CM
 CM_API_VER: int
-CM_AUTH: "CMAuth | None"
+CM_AUTH: "CMAuth | None" = None
 CM_CLUSTER_NAME: str
 FILE_BROWSER_PATH: str
 CM_HOST: str

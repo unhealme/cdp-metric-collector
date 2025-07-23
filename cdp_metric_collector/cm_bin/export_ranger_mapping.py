@@ -146,7 +146,7 @@ Filter = str
 
 async def main(_args: "Sequence[str] | None" = None):
     args = parse_args(_args)
-    setup_logging((logger,), debug=args.verbose)
+    setup_logging(("cdp_metric_collector",), debug=args.verbose)
     logger.debug("parsed args %s", args)
     if args.auth_config:
         user = args.auth_config.username

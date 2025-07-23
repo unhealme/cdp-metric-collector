@@ -58,7 +58,7 @@ async def fetch_roles(auth: CMAuth):
 
 async def main(_args: "Sequence[str] | None" = None):
     args = parse_args(_args)
-    setup_logging((logger, "cm_lib"), debug=args.verbose)
+    setup_logging(("cdp_metric_collector",), debug=args.verbose)
     logger.debug("got args %s", args)
 
     config.load_all()

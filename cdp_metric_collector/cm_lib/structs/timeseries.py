@@ -44,28 +44,30 @@ class TimeSeriesJoined(Struct, array_like=True):
     pool: str
     metric: str
     value: float
-    perc_value: str
+    perc_value: str | None
     min: float
-    perc_min: str
+    perc_min: str | None
     at_min: datetime
     max: float
-    perc_max: str
+    perc_max: str | None
     at_max: datetime
     aggregations: int
 
     def __iter__(self):
-        yield self.timestamp.isoformat(" ", "milliseconds")
-        yield self.pool
-        yield self.metric
-        yield str(self.value)
-        yield self.perc_value
-        yield str(self.min)
-        yield self.perc_min
-        yield self.at_min.isoformat(" ", "milliseconds")
-        yield str(self.max)
-        yield self.perc_max
-        yield self.at_max.isoformat(" ", "milliseconds")
-        yield str(self.aggregations)
+        for f in self.__struct_fields__:
+            yield getattr(self, f)
+
+    def to_row(self):
+        for f in self:
+            match f:
+                case str():
+                    yield f
+                case datetime():
+                    yield f.isoformat(" ", "milliseconds")
+                case None:
+                    yield ""
+                case _:
+                    yield str(f)
 
     def __len__(self):
         return len(self.__struct_fields__)
@@ -77,17 +79,19 @@ class TimeSeriesJoined(Struct, array_like=True):
 class TimeData(Decodable):
     items: list[DataItem]
 
-    def join(self, reff: dict[str, tuple[int, int]]):
+    def join(self, reff: dict[str, tuple[int, int, int]]):
         for item in self.items:
             for ts in item.timeSeries:
                 pool_name = ts.metadata.attributes.poolName
-                vcore, mem = reff.get(pool_name, (None, None))
+                vcore, mem, max_apps = reff.get(pool_name, (None, None, None))
                 metric_name = ts.metadata.metricName
                 match metric_name:
                     case "allocated_memory_mb":
                         of_value = mem
                     case "allocated_vcores":
                         of_value = vcore
+                    case "apps_running":
+                        of_value = max_apps
                     case _:
                         of_value = None
                 for data in ts.data:
