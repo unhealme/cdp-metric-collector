@@ -1,4 +1,4 @@
-__version__ = "b2025.06.26-0"
+__version__ = "b2025.09.03-0"
 
 
 import asyncio
@@ -32,11 +32,11 @@ if TYPE_CHECKING:
     from collections.abc import Sequence
 
 HeaderField = (
-    "Level",
+    "Depth",
+    "Mode",
     "Path",
     "Owner",
     "Group",
-    "Mode",
     "Last Access",
     "Last Modified",
     "Size",
@@ -78,16 +78,16 @@ class RowPath(DTNoTZ):
         return (int(self.Mode, 10) & 0o0170000) == 0o0100000
 
     def __iter__(self):
+        yield self.Mode
         yield self.Path
         yield self.Owner
         yield self.Group
-        yield self.Mode
         yield self.LastAccess.isoformat(" ")
         yield self.LastModified.isoformat(" ")
         yield self.Size
-        yield pretty_size(int(self.Size))
+        yield pretty_size(int(self.Size, 10))
         yield self.Usage
-        yield pretty_size(int(self.Usage))
+        yield pretty_size(int(self.Usage, 10))
         yield self.Content
 
 
