@@ -49,7 +49,8 @@ func main() {
 	for _, p := range args.Paths {
 		walker, err := c.Walk2(p, args.DateMin.Time, args.DateMax.Time, args.MaxDepth, args.DirOnly)
 		if err != nil {
-			logger.Warn("unable to walk path", logger.Args("path", p))
+			logger.Warn("unable to walk path", logger.Args("path", p, "error", err))
+			continue
 		}
 		for p := range walker {
 			fw.Write(p.ToRow())
