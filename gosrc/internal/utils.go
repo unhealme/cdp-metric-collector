@@ -30,5 +30,5 @@ func LimitReached(cur, limit int) bool {
 	if limit < 0 {
 		return true
 	}
-	return cur < limit
+	return cur <= limit
 }
