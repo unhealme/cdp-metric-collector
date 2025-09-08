@@ -42,6 +42,7 @@ func main() {
 		logger.Fatal("unable to create HDFS client", logger.Args("error", err))
 	}
 	fw := csv.NewWriter(args.Outf)
+	defer args.Outf.Close()
 	defer fw.Flush()
 	if !args.Append {
 		fw.Write(outputField)
@@ -56,5 +57,4 @@ func main() {
 			fw.Write(p.ToRow())
 		}
 	}
-	args.Outf.Close()
 }
