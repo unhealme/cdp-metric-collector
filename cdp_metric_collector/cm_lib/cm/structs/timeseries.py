@@ -1,10 +1,18 @@
 from datetime import datetime
 
-from msgspec import Struct
+from msgspec import UNSET, Struct, UnsetType, field
 
+from cdp_metric_collector.cm_lib.structs import Decodable, DTNoTZ
 from cdp_metric_collector.cm_lib.utils import calc_perc
 
-from ._abc import Decodable, DTNoTZ
+
+class TimeSeriesPayload(Struct):
+    query: str
+    from_dt: str | UnsetType = field(name="from", default=UNSET)
+    to_dt: str | UnsetType = field(name="to", default=UNSET)
+    contentType: str | UnsetType = UNSET
+    desiredRollup: str | UnsetType = UNSET
+    mustUseDesiredRollup: bool | UnsetType = UNSET
 
 
 class AggregateTimeSeriesData(DTNoTZ):

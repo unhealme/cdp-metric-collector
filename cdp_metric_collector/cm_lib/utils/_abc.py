@@ -1,5 +1,6 @@
 __all__ = ("abstractmethod",)
 
+
 from abc import ABCMeta as _ABCMeta
 from abc import abstractmethod
 from itertools import chain

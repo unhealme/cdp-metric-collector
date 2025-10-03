@@ -3,7 +3,7 @@ from io import TextIOWrapper
 
 from msgspec import Struct, field
 
-from ._abc import Decodable
+from cdp_metric_collector.cm_lib.structs import Decodable
 
 TYPE_CHECKING = False
 if TYPE_CHECKING:

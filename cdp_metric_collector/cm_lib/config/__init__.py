@@ -1,13 +1,22 @@
 __all__ = (
+    "PATH",
     "load_all",
     "load_with",
+    "save_all",
+    "save_auth",
 )
 
-from .loader import load_all, load_with
+
+from .loader import CONFIG_PATH as PATH
+from .loader import load_all, load_with, save_all, save_auth
 
 TYPE_CHECKING = False
 if TYPE_CHECKING:
     from cdp_metric_collector.cm_lib.cm import CMAuth
+
+    from .structs import Config
+
+_CONFIG: "Config"
 
 # CM
 CM_API_VER: int
@@ -19,6 +28,8 @@ CM_HOST: str
 # HDFS
 HDFS_LANDING_PATH: str
 HDFS_NAMENODE_HOST: list[str]
+HDFS_REBALANCE_PATH: str
+HDFS_REBALANCE_ROLE: str
 HDFS_REBALANCE_STATUS: str
 
 # HIVE

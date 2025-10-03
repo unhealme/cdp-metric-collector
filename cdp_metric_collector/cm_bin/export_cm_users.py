@@ -1,4 +1,4 @@
-__version__ = "r2025.06.26-0"
+__version__ = "r2025.10.10-0"
 
 
 import csv
@@ -8,14 +8,11 @@ from argparse import ArgumentDefaultsHelpFormatter, ArgumentParser
 from pathlib import Path
 
 from cdp_metric_collector.cm_lib import config
-from cdp_metric_collector.cm_lib.cm import CMAPIClientBase, CMAuth
-from cdp_metric_collector.cm_lib.errors import HTTPNotOK
-from cdp_metric_collector.cm_lib.structs.cm import AuthRoles
+from cdp_metric_collector.cm_lib.cm import AuthRoles, CMAPIClient, CMAuth
 from cdp_metric_collector.cm_lib.utils import (
     ARGSWithAuthBase,
     parse_auth,
     setup_logging,
-    wrap_async,
 )
 
 TYPE_CHECKING = False
@@ -34,26 +31,9 @@ class Arguments(ARGSWithAuthBase):
     roles_file: Path | None
 
 
-class CMMetricsClient(CMAPIClientBase):
-    async def roles(self):
-        async with self._client.get(
-            f"/api/v{config.CM_API_VER}/authRoles",
-            params="view=FULL",
-            ssl=False,
-        ) as resp:
-            if resp.status >= 400:
-                logger.error(
-                    "got response code %s with header: %s",
-                    resp.status,
-                    resp.headers,
-                )
-                raise HTTPNotOK(await resp.text())
-            return await wrap_async(AuthRoles.decode_json, await resp.read())
-
-
 async def fetch_roles(auth: CMAuth):
-    async with CMMetricsClient(config.CM_HOST, auth) as client:
-        return await client.roles()
+    async with CMAPIClient(config.CM_HOST, auth) as c:
+        return await c.roles()
 
 
 async def main(_args: "Sequence[str] | None" = None):

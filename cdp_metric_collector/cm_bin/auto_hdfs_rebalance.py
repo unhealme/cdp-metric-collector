@@ -1,23 +1,22 @@
-__version__ = "u2025.06.26-0"
+__version__ = "r2025.10.01-0"
 
 
 import argparse
 import logging
-from collections.abc import Sequence
-from datetime import datetime
 from enum import Enum
 from pathlib import Path
 
 from cdp_metric_collector.cm_lib import config
-from cdp_metric_collector.cm_lib.cm import CMAPIClientBase, CMAuth
-from cdp_metric_collector.cm_lib.errors import HTTPNotOK
-from cdp_metric_collector.cm_lib.structs import Decodable
+from cdp_metric_collector.cm_lib.cm import APICommand, CMAPIClient, CMAuth
 from cdp_metric_collector.cm_lib.utils import (
-    JSON_ENC,
     ARGSWithAuthBase,
     parse_auth,
     setup_logging,
 )
+
+TYPE_CHECKING = False
+if TYPE_CHECKING:
+    from collections.abc import Sequence
 
 logger = logging.getLogger(__name__)
 prog: str | None = None
@@ -35,65 +34,7 @@ class Arguments(ARGSWithAuthBase):
     id: int | None
 
 
-class APICommand(Decodable):
-    id: int
-    name: str
-    startTime: datetime
-    endTime: datetime
-    active: bool
-    success: bool
-    resultMessage: str
-
-    def dump(self, fp: Path | str):
-        Path(fp).write_bytes(JSON_ENC.encode(self))
-
-
-class CommandClient(CMAPIClientBase):
-    async def get_command(self, id: int):
-        async with self._client.get(
-            f"/api/v{config.CM_API_VER}/commands/{id}",
-            ssl=False,
-        ) as resp:
-            if resp.status >= 400:
-                logger.error(
-                    "got response code %s with header: %s",
-                    resp.status,
-                    resp.headers,
-                )
-                raise HTTPNotOK(await resp.text())
-            return APICommand.decode_json(await resp.read())
-
-    async def rebalance_start(self):
-        async with self._client.post(
-            f"/api/v{config.CM_API_VER}/clusters/{config.CM_CLUSTER_NAME}"
-            "/services/hdfs/commands/Rebalance",
-            ssl=False,
-        ) as resp:
-            if resp.status >= 400:
-                logger.error(
-                    "got response code %s with header: %s",
-                    resp.status,
-                    resp.headers,
-                )
-                raise HTTPNotOK(await resp.text())
-            return APICommand.decode_json(await resp.read())
-
-    async def rebalance_stop(self, id: int):
-        async with self._client.post(
-            f"/api/v{config.CM_API_VER}/commands/{id}/abort",
-            ssl=False,
-        ) as resp:
-            if resp.status >= 400:
-                logger.error(
-                    "got response code %s with header: %s",
-                    resp.status,
-                    resp.headers,
-                )
-                raise HTTPNotOK(await resp.text())
-            return APICommand.decode_json(await resp.read())
-
-
-async def main(_args: Sequence[str] | None = None):
+async def main(_args: "Sequence[str] | None" = None):
     args = parse_args(_args)
     setup_logging(("cdp_metric_collector",), debug=args.verbose)
     logger.debug("got args %s", args)
@@ -101,31 +42,32 @@ async def main(_args: Sequence[str] | None = None):
     auth = args.get_auth()
     if not auth:
         args.parser.error("No auth mechanism is passed")
-    async with CommandClient(config.CM_HOST, auth) as client:
+    async with CMAPIClient(config.CM_HOST, auth) as c:
         match args.command:
             case CMD.START:
-                rebalance = await client.rebalance_start()
+                rebalance = await c.rebalance_start()
                 logger.info("started rebalance command with ID %s", rebalance.id)
             case CMD.STOP:
                 if args.id is not None:
-                    rebalance = await client.get_command(args.id)
+                    rebalance = await c.command(args.id)
                     if rebalance.name != "Rebalance":
                         args.parser.error(f"ID {args.id} is not a rebalance command")
                 else:
                     last_status = APICommand.decode_json(
                         Path(config.HDFS_REBALANCE_STATUS).read_bytes()
                     )
-                    rebalance = await client.get_command(last_status.id)
+                    rebalance = await c.command(last_status.id)
                 if not rebalance.active:
                     logger.info(
                         "rebalance command with ID %s is already stoppped", rebalance.id
                     )
-                rebalance = await client.rebalance_stop(rebalance.id)
-                logger.info("rebalance command with ID %s stopped", rebalance.id)
+                else:
+                    rebalance = await c.rebalance_stop(rebalance.id)
+                    logger.info("rebalance command with ID %s stopped", rebalance.id)
         rebalance.dump(config.HDFS_REBALANCE_STATUS)
 
 
-def parse_args(args: Sequence[str] | None = None):
+def parse_args(args: "Sequence[str] | None" = None):
     parser = argparse.ArgumentParser(
         prog=prog,
         add_help=False,

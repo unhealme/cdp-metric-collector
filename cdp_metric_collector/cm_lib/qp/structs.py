@@ -1,10 +1,7 @@
-from typing import Any, Self
-
 from msgspec import UNSET, Struct, UnsetType, field
 
+from cdp_metric_collector.cm_lib.structs import Decodable, Progressive
 from cdp_metric_collector.cm_lib.utils import encode_json_str
-
-from ._abc import Decodable, Progressive
 
 
 class DagInfoData(Struct):
@@ -104,24 +101,3 @@ class QuerySearchMeta(Struct):
 class QuerySearchResult(Decodable):
     queries: list[QueryInfo]
     meta: QuerySearchMeta
-
-
-class HiveDatabase(Struct, array_like=True):
-    name: str
-    comment: str
-    location: str
-    location_managed: str
-    owner: str
-    owner_type: str
-    param: str
-
-    def __str__(self) -> str:
-        return self.name
-
-    def __eq__(self, other: Any) -> bool:
-        if isinstance(other, self.__class__):
-            return self.name.__eq__(other.name)
-        return super().__eq__(other)
-
-    def __lt__(self, other: Self):
-        return self.name.__lt__(other.name)

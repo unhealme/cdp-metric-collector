@@ -1,14 +1,10 @@
 from enum import Enum
+from typing import Any, Literal
 
 from msgspec import UNSET, Struct, UnsetType, json
 
+from cdp_metric_collector.cm_lib.structs import Decodable
 from cdp_metric_collector.cm_lib.utils import ABC, pretty_size
-
-from ._abc import Decodable
-
-TYPE_CHECKING = False
-if TYPE_CHECKING:
-    from typing import Any
 
 
 class FileType(Enum):
@@ -144,3 +140,9 @@ class DFSHealth(Decodable):
     __dec_hook__ = DFSHealth_dec_hook
 
     beans: list[NameNodeInfo]
+
+
+class SparkListenerSQLExecutionStart(Decodable):
+    Event: Literal["org.apache.spark.sql.execution.ui.SparkListenerSQLExecutionStart"]
+    executionId: int
+    physicalPlanDescription: str

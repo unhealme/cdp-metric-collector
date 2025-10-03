@@ -1,4 +1,4 @@
-__version__ = "r2025.07.18-0"
+__version__ = "r2025.10.01-0"
 
 
 import csv
@@ -11,10 +11,8 @@ from pathlib import Path
 from msgspec import UNSET
 
 from cdp_metric_collector.cm_lib import config
-from cdp_metric_collector.cm_lib.errors import HTTPNotOK
-from cdp_metric_collector.cm_lib.kerberos import KerberosClientBase
-from cdp_metric_collector.cm_lib.structs.hdfs import DFSHealth
-from cdp_metric_collector.cm_lib.utils import ARGSBase, setup_logging, wrap_async
+from cdp_metric_collector.cm_lib.hdfs import DFSHealth, NameNodeClient
+from cdp_metric_collector.cm_lib.utils import ARGSBase, setup_logging
 
 TYPE_CHECKING = False
 if TYPE_CHECKING:
@@ -28,34 +26,6 @@ class Arguments(ARGSBase):
     file: Path | None
     output: Path | None
     verbose: bool
-
-
-class NameNodeClient(KerberosClientBase):
-    nn_hosts: list[str]
-
-    def __init__(self, urls: list[str]) -> None:
-        super().__init__("")
-        self.nn_hosts = urls
-
-    async def health_status(self):
-        body = b""
-        for n, host in enumerate(self.nn_hosts):
-            async with self._client.stream(
-                "GET", f"{host}/jmx?qry=Hadoop:service=NameNode,name=NameNodeInfo"
-            ) as resp:
-                body = await resp.aread()
-                if resp.status_code >= 400:
-                    logger.error(
-                        "got response code %s with header: %s using host: %s",
-                        resp.status_code,
-                        resp.headers,
-                        host,
-                    )
-                    continue
-                if n > 0:
-                    self.nn_hosts.insert(0, self.nn_hosts.pop(n))
-                return await wrap_async(DFSHealth.decode_json, body)
-        raise HTTPNotOK(body.decode())
 
 
 async def fetch_health():

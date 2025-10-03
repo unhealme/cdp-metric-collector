@@ -1,29 +1,19 @@
-__version__ = "b2025.09.03-0"
+__version__ = "b2025.10.01-0"
 
 
-import asyncio
 import csv
 import logging
 import sys
 from argparse import ArgumentParser, RawTextHelpFormatter
 from datetime import datetime
-from io import StringIO, TextIOWrapper
+from io import TextIOWrapper
 from pathlib import Path
-from urllib.parse import urlparse
-
-from aiohttp import ClientError
-from msgspec import convert, field
 
 from cdp_metric_collector.cm_lib import config
-from cdp_metric_collector.cm_lib.cm import CMAPIClientBase, CMAuth
-from cdp_metric_collector.cm_lib.errors import HTTPNotOK
-from cdp_metric_collector.cm_lib.structs import DTNoTZ
+from cdp_metric_collector.cm_lib.cm import CMAPIClient, CMAuth
 from cdp_metric_collector.cm_lib.utils import (
     ARGSWithAuthBase,
-    encode_json_str,
-    join_url,
     parse_auth,
-    pretty_size,
     setup_logging,
 )
 
@@ -60,93 +50,9 @@ class Arguments(ARGSWithAuthBase):
     output: Path | int
 
 
-class RowPath(DTNoTZ):
-    Path: str
-    Owner: str
-    Group: str
-    Mode: str
-    LastAccess: datetime = field(name="Last Access")
-    LastModified: datetime = field(name="Last Modified")
-    Size: str
-    Usage: str = field(name="Total Size")
-    Content: str = field(name="File and Directory Count")
-
-    def is_dir(self) -> bool:
-        return (int(self.Mode, 10) & 0o0170000) == 0o0040000
-
-    def is_file(self) -> bool:
-        return (int(self.Mode, 10) & 0o0170000) == 0o0100000
-
-    def __iter__(self):
-        yield self.Mode
-        yield self.Path
-        yield self.Owner
-        yield self.Group
-        yield self.LastAccess.isoformat(" ")
-        yield self.LastModified.isoformat(" ")
-        yield self.Size
-        yield pretty_size(int(self.Size, 10))
-        yield self.Usage
-        yield pretty_size(int(self.Usage, 10))
-        yield self.Content
-
-
-class FileBrowserClient(CMAPIClientBase):
-    api_path: str
-
-    def __init__(self, url: str, auth: CMAuth) -> None:
-        parsed = urlparse(url)
-        self.api_path = parsed.path
-        super().__init__(f"{parsed.scheme}://{parsed.netloc}", auth)
-
-    async def iter_path(self, path: str):
-        retry = 1
-        while True:
-            try:
-                async with self._client.get(
-                    self.api_path,
-                    ssl=False,
-                    params={
-                        "limit": "0",
-                        "offset": "0",
-                        "format": "CSV",
-                        "path": path,
-                        "json": encode_json_str(
-                            {
-                                "terms": [
-                                    {
-                                        "fileSearchType": 12,
-                                        "queryText": path,
-                                        "negated": False,
-                                    }
-                                ]
-                            }
-                        ),
-                        "sortBy": "FILENAME",
-                        "sortReverse": "false",
-                    },
-                ) as resp:
-                    if resp.status >= 400:
-                        logger.error(
-                            "got response code %s with header: %s",
-                            resp.status,
-                            resp.headers,
-                        )
-                        raise HTTPNotOK(await resp.text())
-                    data = StringIO(await resp.text(), newline="")
-                with data:
-                    for row in csv.DictReader(data, restkey="_"):
-                        yield convert(row, RowPath)
-                break
-            except ClientError:
-                logger.warning("connection error retries %s", retry, exc_info=True)
-                retry += 1
-                await asyncio.sleep(5)
-
-
 async def main(_args: "Sequence[str] | None" = None):
-    async def fetch_data(client: FileBrowserClient, base_path: str):
-        async for path in client.iter_path(base_path):
+    async def fetch_data(client: CMAPIClient, base_path: str):
+        async for path in client.file_browser(base_path):
             level = len(Path(path.Path).parents) - first_level
             if level <= args.max_level:
                 if path.is_dir():
@@ -176,14 +82,12 @@ async def main(_args: "Sequence[str] | None" = None):
     ) as f:
         out = csv.writer(f)
         out.writerow(HeaderField)
-        async with FileBrowserClient(
-            join_url(config.CM_HOST, config.FILE_BROWSER_PATH), auth
-        ) as client:
+        async with CMAPIClient(config.CM_HOST, auth) as c:
             for p in args.path:
                 if not Path(p).is_absolute():
                     logger.warning("skipping path: %s, path must be absolute", p)
                 first_level = len(Path(p).parents)
-                async for row in fetch_data(client, p):
+                async for row in fetch_data(c, p):
                     out.writerow(row)
 
 

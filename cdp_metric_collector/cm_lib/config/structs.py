@@ -15,6 +15,8 @@ class CMConfig(Struct):
 class HDFSConfig(Struct):
     landing_path: str
     namenode_host: list[str]
+    rebalance_path: str
+    rebalance_role: str
     rebalance_status: str
 
 

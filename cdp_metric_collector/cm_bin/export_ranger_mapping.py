@@ -1,4 +1,4 @@
-__version__ = "b2025.06.26-0"
+__version__ = "b2025.10.01-0"
 
 
 import csv
@@ -8,20 +8,10 @@ from argparse import ArgumentParser
 from collections import defaultdict
 from pathlib import Path
 
-from aiohttp import BasicAuth, ClientSession, ClientTimeout
-from msgspec import Struct
-
 from cdp_metric_collector.cm_lib import config
-from cdp_metric_collector.cm_lib.cm import APIClientBase, CMAuth
-from cdp_metric_collector.cm_lib.errors import HTTPNotOK
-from cdp_metric_collector.cm_lib.structs import Decodable
-from cdp_metric_collector.cm_lib.utils import (
-    ARGSBase,
-    encode_json_str,
-    parse_auth,
-    setup_logging,
-    wrap_async,
-)
+from cdp_metric_collector.cm_lib.cm import CMAuth
+from cdp_metric_collector.cm_lib.ranger import RangerClient
+from cdp_metric_collector.cm_lib.utils import ARGSBase, parse_auth, setup_logging
 
 TYPE_CHECKING = False
 if TYPE_CHECKING:
@@ -42,83 +32,6 @@ class Arguments(ARGSBase):
     auth_config: CMAuth | None
 
 
-class RangerPolicyItemAccess(Struct):
-    type: str
-    isAllowed: bool
-
-
-class RangerPolicyItem(Struct):
-    accesses: list[RangerPolicyItemAccess]
-    users: list[str]
-    groups: list[str]
-    roles: list[str]
-
-
-class RangerPolicyResource(Struct):
-    values: list[str]
-    isExcludes: bool
-    isRecursive: bool
-
-
-class RangerPolicy(Struct):
-    isEnabled: bool
-    resources: dict[str, RangerPolicyResource]
-    policyItems: list[RangerPolicyItem]
-    denyPolicyItems: list[RangerPolicyItem]
-    allowExceptions: list[RangerPolicyItem]
-    denyExceptions: list[RangerPolicyItem]
-
-
-class RangerPolicyList(Decodable):
-    startIndex: int
-    pageSize: int
-    totalCount: int
-    resultSize: int
-    policies: list[RangerPolicy]
-
-
-class RangerClient(APIClientBase):
-    base_url: str
-
-    def __init__(self, base_url: str, user: str, passwd: str) -> None:
-        self.base_url = base_url
-        self._client = ClientSession(
-            base_url,
-            auth=BasicAuth(user, passwd),
-            timeout=ClientTimeout(total=None),
-        )
-
-    async def get_policies(
-        self,
-        service_type: str,
-        limit: int = 10000,
-        index: int = 0,
-        **filters: str,
-    ):
-        params = {
-            "policyType": 0,
-            "serviceType": service_type,
-            "pageSize": limit,
-            "startIndex": index,
-            **filters,
-        }
-        logger.debug("sending data %s", encode_json_str(params))
-        async with self._client.get(
-            "/service/plugins/policies",
-            params=params,
-            ssl=False,
-        ) as resp:
-            logger.debug("sending GET request to %s", resp.url)
-            if resp.status >= 400:
-                logger.error(
-                    "got response code %s with header: %s",
-                    resp.status,
-                    resp.headers,
-                )
-                raise HTTPNotOK(await resp.text())
-            return await wrap_async(RangerPolicyList.decode_json, await resp.read())
-
-
 async def fetch_data(
     client: RangerClient,
     service_type: str,
@@ -129,7 +42,7 @@ async def fetch_data(
     hasnext = True
     while hasnext:
         logger.debug("current index: %s / %s", index, max)
-        data = await client.get_policies(service_type, index=index, **filters)
+        data = await client.policies(service_type, index=index, **filters)
         logger.debug("got %s records", data.resultSize)
         for i in data.policies:
             yield i
@@ -161,9 +74,9 @@ async def main(_args: "Sequence[str] | None" = None):
         lambda: defaultdict(set)
     )
     config.load_all()
-    async with RangerClient(config.RANGER_HOST, user, passw) as client:
+    async with RangerClient(config.RANGER_HOST, user, passw) as c:
         for fk, fv in set(args.filters):
-            async for data in fetch_data(client, args.service, 0, **{fk: fv}):
+            async for data in fetch_data(c, args.service, 0, **{fk: fv}):
                 match data.resources:
                     case {"database": d, "column": _, "table": t}:
                         for db in d.values:

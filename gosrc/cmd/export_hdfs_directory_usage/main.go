@@ -7,7 +7,7 @@ import (
 	"github.com/unhealme/cdp-metric-collector/internal/hdfs"
 )
 
-const Version = "b2025.09.08-0"
+const Version = "r2025.09.27-0"
 
 var (
 	logger = internal.DefaultLogger()
@@ -36,13 +36,13 @@ func main() {
 	if args.Verbose {
 		logger.Level = internal.LogLevelDebug
 	}
-	logger.Debug("successfully parsed arguments", logger.Args("args", args))
+	logger.Debug("successfully parsed arguments", logger.Args(args.ToArgs()...))
 	c, err := hdfs.GetClient()
 	if err != nil {
 		logger.Fatal("unable to create HDFS client", logger.Args("error", err))
 	}
-	fw := csv.NewWriter(args.Outf)
-	defer args.Outf.Close()
+	fw := csv.NewWriter(args._Outf)
+	defer args._Outf.Close()
 	defer fw.Flush()
 	if !args.Append {
 		fw.Write(outputField)

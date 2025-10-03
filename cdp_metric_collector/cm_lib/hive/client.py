@@ -2,11 +2,23 @@ import contextlib
 import logging
 import re
 from io import StringIO
-from typing import TYPE_CHECKING, Any, Concatenate, ParamSpec, TypeVar, cast
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Concatenate,
+    Literal,
+    ParamSpec,
+    TypeVar,
+    cast,
+    overload,
+)
 
 from impala.dbapi import connect
+from msgspec import convert
 
 from cdp_metric_collector.cm_lib.utils import ABC
+
+from .structs import HiveDatabase
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -16,7 +28,24 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-class HiveClientBase(ABC):
+_RT = TypeVar("_RT")
+_PT = ParamSpec("_PT")
+_Self = TypeVar("_Self", bound="HiveClient")
+
+
+def ensure_init(
+    func: "Callable[Concatenate[_Self,_PT], _RT]",
+) -> "Callable[Concatenate[_Self,_PT], _RT]":
+    def deco(self: _Self, *args: _PT.args, **kwargs: _PT.kwargs):
+        if not self._initialized:
+            err = f"{self} is not initialized"
+            raise RuntimeError(err)
+        return func(self, *args, **kwargs)
+
+    return deco
+
+
+class HiveClient(ABC):
     _hivecon: "HiveServer2Connection"
     _hivecur: "HiveServer2Cursor"
     _initialized: bool
@@ -89,19 +118,20 @@ class HiveClientBase(ABC):
         self._initialized = True
         logger.debug("connected to %r", self.hive_url)
 
+    @overload
+    def databases(self) -> list[str]: ...
+    @overload
+    def databases(self, expand: Literal[True]) -> list[HiveDatabase]: ...
+    @overload
+    def databases(self, expand: bool = False) -> list[HiveDatabase] | list[str]: ...
+    @ensure_init
+    def databases(self, expand: bool = False):
+        self._hivecur.execute("show databases")
+        if expand:
+            return sorted(self.database(str(x[0])) for x in self._hivecur.fetchall())
+        return sorted(str(x[0]) for x in self._hivecur)
 
-_RT = TypeVar("_RT")
-_PT = ParamSpec("_PT")
-_Self = TypeVar("_Self", bound=HiveClientBase)
-
-
-def ensure_init(
-    func: "Callable[Concatenate[_Self,_PT], _RT]",
-) -> "Callable[Concatenate[_Self,_PT], _RT]":
-    def deco(self: _Self, *args: _PT.args, **kwargs: _PT.kwargs):
-        if not self._initialized:
-            err = f"{self} is not initialized"
-            raise RuntimeError(err)
-        return func(self, *args, **kwargs)
-
-    return deco
+    @ensure_init
+    def database(self, name: str):
+        self._hivecur.execute(f"desc schema {name}")
+        return convert(self._hivecur.fetchone(), HiveDatabase)

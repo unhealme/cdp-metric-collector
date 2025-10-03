@@ -5,4 +5,4 @@ __all__ = (
 )
 
 
-from ._abc import Decodable, DTNoTZ, Progressive
+from ._base import Decodable, DTNoTZ, Progressive

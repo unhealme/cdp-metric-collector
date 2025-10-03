@@ -1,6 +1,6 @@
 from msgspec import Struct
 
-from ._abc import Decodable
+from cdp_metric_collector.cm_lib.structs import Decodable
 
 
 class YARNApplication(Struct):

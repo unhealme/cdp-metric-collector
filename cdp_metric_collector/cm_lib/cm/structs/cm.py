@@ -1,8 +1,11 @@
+from datetime import datetime
 from enum import Enum, IntEnum
+from pathlib import Path
 
-from msgspec import UNSET, Struct, UnsetType
+from msgspec import UNSET, Struct, UnsetType, field
 
-from ._abc import Decodable
+from cdp_metric_collector.cm_lib.structs import Decodable, DTNoTZ
+from cdp_metric_collector.cm_lib.utils import JSON_ENC, pretty_size
 
 
 class User(Struct):
@@ -149,3 +152,51 @@ class HealthIssues(Decodable):
                 entity.hostName,
                 entity.clusterName,
             )
+
+
+class APICommand(Decodable):
+    id: int
+    name: str
+    startTime: datetime
+    active: bool
+    endTime: datetime | UnsetType = UNSET
+    success: bool | UnsetType = UNSET
+    resultMessage: str | UnsetType = UNSET
+
+    def dump(self, fp: Path | str):
+        Path(fp).write_bytes(JSON_ENC.encode(self))
+
+
+class Commands(Decodable):
+    items: list[APICommand]
+
+
+class FileBrowserPath(DTNoTZ):
+    Path: str
+    Owner: str
+    Group: str
+    Mode: str
+    LastAccess: datetime = field(name="Last Access")
+    LastModified: datetime = field(name="Last Modified")
+    Size: str
+    Usage: str = field(name="Total Size")
+    Content: str = field(name="File and Directory Count")
+
+    def is_dir(self) -> bool:
+        return (int(self.Mode, 10) & 0o0170000) == 0o0040000
+
+    def is_file(self) -> bool:
+        return (int(self.Mode, 10) & 0o0170000) == 0o0100000
+
+    def __iter__(self):
+        yield self.Mode
+        yield self.Path
+        yield self.Owner
+        yield self.Group
+        yield self.LastAccess.isoformat(" ")
+        yield self.LastModified.isoformat(" ")
+        yield self.Size
+        yield pretty_size(int(self.Size, 10))
+        yield self.Usage
+        yield pretty_size(int(self.Usage, 10))
+        yield self.Content

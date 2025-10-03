@@ -1,216 +1,37 @@
-__version__ = "b2025.06.26-0"
+__version__ = "b2025.10.01-0"
 
 
 import argparse
 import asyncio
 import csv
 import logging
-import shlex
 import sys
-from datetime import datetime, timedelta
-from enum import Enum
-from io import BytesIO, TextIOWrapper
+from datetime import datetime
+from io import TextIOWrapper
 from pathlib import Path
-from typing import ClassVar, Literal, cast
-
-from hdfs.util import HdfsError
-from msgspec import Struct, ValidationError, json
 
 from cdp_metric_collector.cm_lib import config
-from cdp_metric_collector.cm_lib.errors import HTTPNotOK
-from cdp_metric_collector.cm_lib.hdfs import HDFSClientBase
-from cdp_metric_collector.cm_lib.kerberos import KerberosClientBase
-from cdp_metric_collector.cm_lib.structs import Decodable
+from cdp_metric_collector.cm_lib.hdfs import HDFSClient
+from cdp_metric_collector.cm_lib.spark import (
+    ApplicationEnvironment,
+    ApplicationNotFoundError,
+    AppStatus,
+    SparkApplication,
+    SparkHistoryClient,
+)
 from cdp_metric_collector.cm_lib.utils import (
     ARGSBase,
     ConvertibleToString,
     setup_logging,
-    wrap_async,
 )
 
 TYPE_CHECKING = False
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
-    from urllib3 import HTTPResponse
 
 logger = logging.getLogger(__name__)
 prog: str | None = None
-
-
-class AppStatus(Enum):
-    COMPLETED = 0
-    RUNNING = 1
-
-    def __str__(self) -> str:
-        return f"{self.__class__.name}.{self.name}"
-
-
-class ApplicationAttempt(Struct):
-    sparkUser: str
-    duration: int
-    completed: bool
-    startTimeEpoch: int
-    endTimeEpoch: int
-
-    @property
-    def startTime(self):
-        return datetime.fromtimestamp(self.startTimeEpoch / 1000)
-
-    @property
-    def endTime(self):
-        return datetime.fromtimestamp(self.endTimeEpoch / 1000)
-
-    @property
-    def duration_parsed(self):
-        return str(timedelta(seconds=self.duration / 1000))
-
-
-class SparkApplication(Struct):
-    id: str
-    name: str
-    attempts: list[ApplicationAttempt]
-
-
-class SparkProperties(Struct, array_like=True):
-    name: str
-    value: str
-
-    def as_bool(self):
-        return self.value.lower() == "true"
-
-    def as_int(self):
-        return int(self.value, 10)
-
-    def as_float(self):
-        return float(self.value)
-
-    def as_params(self):
-        return shlex.split(self.value)
-
-
-class ApplicationEnvironment(Decodable):
-    sparkProperties: list[SparkProperties]
-
-    @classmethod
-    def new(cls):
-        return cls([])
-
-    def get_yarn_queue(self):
-        for p in self.sparkProperties:
-            if p.name == "spark.yarn.queue":
-                return p.value
-        return ""
-
-
-class ApplicationNotFoundError(ValueError):
-    pass
-
-
-class SparkHistoryClient(KerberosClientBase):
-    app_dec: ClassVar[json.Decoder[list[SparkApplication]]] = json.Decoder(
-        list[SparkApplication]
-    )
-
-    async def applications(
-        self,
-        status: AppStatus | None = None,
-        minDate: datetime | None = None,
-        maxDate: datetime | None = None,
-        minEndDate: datetime | None = None,
-        maxEndDate: datetime | None = None,
-        limit: int | None = None,
-    ):
-        params = {
-            "status": status,
-            "minDate": minDate,
-            "maxDate": maxDate,
-            "minEndDate": minEndDate,
-            "maxEndDate": maxEndDate,
-            "limit": limit,
-        }
-        for k, v in list(params.items()):
-            match v:
-                case AppStatus():
-                    params[k] = v.value
-                case datetime():
-                    params[k] = "{:%Y-%m-%dT%H:%M:%S}.{:.0f}GMT".format(
-                        v, v.microsecond / 1000
-                    )
-                case None:
-                    del params[k]
-        async with self._client.stream(
-            "GET",
-            "api/v1/applications",
-            params=params,
-        ) as resp:
-            body = await resp.aread()
-            if resp.status_code >= 400:
-                logger.error(
-                    "got response code %s with header: %s",
-                    resp.status_code,
-                    resp.headers,
-                )
-                raise HTTPNotOK(body.decode())
-            return await wrap_async(self.app_dec.decode, body)
-
-    async def environment(self, app_id: str):
-        retry = 1
-        while True:
-            try:
-                async with self._client.stream(
-                    "GET",
-                    f"api/v1/applications/{app_id}/environment",
-                    timeout=None,
-                ) as resp:
-                    body = await resp.aread()
-                    if resp.status_code == 404:
-                        raise ApplicationNotFoundError(body.decode())
-                    elif resp.status_code >= 400:
-                        logger.error(
-                            "got response code %s with header: %s",
-                            resp.status_code,
-                            resp.headers,
-                        )
-                        raise HTTPNotOK(body.decode())
-                    return await wrap_async(ApplicationEnvironment.decode_json, body)
-            except Exception:
-                if retry < 3:
-                    logger.info("connection error retries %s", retry)
-                    logger.debug("", exc_info=True)
-                    retry += 1
-                    await asyncio.sleep(5)
-                else:
-                    logger.exception("maximum retries reached")
-                    raise
-
-
-class SparkListenerSQLExecutionStart(Decodable):
-    Event: Literal["org.apache.spark.sql.execution.ui.SparkListenerSQLExecutionStart"]
-    executionId: int
-    physicalPlanDescription: str
-
-
-class HDFSClient(HDFSClientBase):
-    async def aread(self, path: str):
-        with await wrap_async(self.read, path) as f:
-            f = cast("HTTPResponse", f)
-            return BytesIO(await wrap_async(f.read))
-
-    async def iter_spark_sql(self, app_id: str):
-        try:
-            with await self.aread(f"/user/spark/applicationHistory/{app_id}") as buf:
-                for i in buf:
-                    try:
-                        yield await wrap_async(
-                            SparkListenerSQLExecutionStart.decode_json, i
-                        )
-                    except ValidationError:
-                        pass
-        except HdfsError as e:
-            if "not found." not in e.message:
-                raise
-            logger.warning(e.message)
 
 
 Row = tuple[ConvertibleToString, ...]
@@ -233,7 +54,7 @@ async def process_app(
     result: list[Row] = []
     for attempt in app.attempts:
         sqlc = 0
-        async for sql in hdfs.iter_spark_sql(app.id):
+        async for sql in hdfs.spark_sql(app.id):
             sqlc += 1
             result.append(
                 (

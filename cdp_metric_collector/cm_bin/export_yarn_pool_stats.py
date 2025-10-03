@@ -1,4 +1,4 @@
-__version__ = "r2025.07.23-0"
+__version__ = "r2025.10.01-4"
 
 
 import csv
@@ -6,93 +6,112 @@ import logging
 import sqlite3
 import sys
 from argparse import (
+    Action,
     ArgumentDefaultsHelpFormatter,
     ArgumentParser,
     BooleanOptionalAction,
+    Namespace,
 )
 from contextlib import contextmanager
 from datetime import datetime, timedelta
 from pathlib import Path
 
 from cdp_metric_collector.cm_lib import config
-from cdp_metric_collector.cm_lib.cm import CMAuth
-from cdp_metric_collector.cm_lib.structs.timeseries import TimeData
+from cdp_metric_collector.cm_lib.cm import (
+    CMAPIClient,
+    CMAuth,
+    MetricContentType,
+    MetricRollupType,
+    TimeData,
+    YQMCLient,
+)
 from cdp_metric_collector.cm_lib.utils import (
     ARGSWithAuthBase,
     parse_auth,
     setup_logging,
-    wrap_async,
 )
-
-from .export_cm_metrics import CMMetricsClient as _CMMetricsClient
-from .export_cm_metrics import ContentType, RollupType
-from .export_yarn_qm import YQMCLient
 
 TYPE_CHECKING = False
 if TYPE_CHECKING:
-    from collections.abc import Sequence
+    from collections.abc import Awaitable, Callable, Sequence
+    from typing import Any
+
 
 logger = logging.getLogger(__name__)
 prog: str | None = None
 
 
 class Arguments(ARGSWithAuthBase):
+    _tbl: str
     parser: ArgumentParser
     verbose: bool
-    output: Path | None
+
     as_csv: bool
+    meth: "Callable[[CMAuth], Awaitable[tuple[TimeData, CMAuth]]]"
     metrics_file: Path | None
+    output: Path | None
     yqm_file: Path | None
 
 
-class CMMetricsClient(_CMMetricsClient):
-    async def timedata(
+class MethodParseAction(Action):
+    def __call__(
         self,
-        query: str,
-        *,
-        from_dt: datetime | None = None,
-        to_dt: datetime | None = None,
-        content_type: ContentType | None = None,
-        rollup: RollupType | None = None,
-        force_rollup: bool | None = None,
+        parser: ArgumentParser,
+        namespace: Namespace,
+        values: "str | Sequence[Any] | None",
+        option_string: str | None = None,
     ):
-        return await wrap_async(
-            TimeData.decode_json,
-            await self.timeseries(
-                query,
-                from_dt=from_dt,
-                to_dt=to_dt,
-                content_type=content_type,
-                rollup=rollup,
-                force_rollup=force_rollup,
-            ),
-        )
+        match values:
+            case "HOURLY":
+                meth = fetch_metrics_hourly
+                tbl = "pool_hourly"
+            case "10MIN":
+                meth = fetch_metrics_10min
+                tbl = "pool_10min"
+            case _:
+                err = f"invalid meta type: {values}"
+                raise ValueError(err)
+        setattr(namespace, self.dest, meth)
+        namespace._tbl = tbl
 
 
-async def fetch_metrics(auth: CMAuth):
-    async with CMMetricsClient(config.CM_HOST, auth) as client:
-        data = await client.timedata(
+async def fetch_metrics_hourly(auth: CMAuth):
+    async with CMAPIClient(config.CM_HOST, auth) as c:
+        data = await c.timedata(
             "select allocated_vcores,allocated_memory_mb,apps_pending,apps_running",
             from_dt=(datetime.now() - timedelta(days=1)).replace(
                 hour=0, minute=0, second=0, microsecond=0
             ),
-            content_type=ContentType.JSON,
-            rollup=RollupType.HOURLY,
+            content_type=MetricContentType.JSON,
+            rollup=MetricRollupType.HOURLY,
             force_rollup=True,
         )
-        auth.session = client._session
-        return data, auth
+        return data, c.auth
+
+
+async def fetch_metrics_10min(auth: CMAuth):
+    async with CMAPIClient(config.CM_HOST, auth) as c:
+        data = await c.timedata(
+            "select allocated_vcores,allocated_memory_mb,apps_pending,apps_running",
+            from_dt=(datetime.now() - timedelta(days=1)).replace(
+                hour=0, minute=0, second=0, microsecond=0
+            ),
+            content_type=MetricContentType.JSON,
+            rollup=MetricRollupType.TEN_MINUTELY,
+            force_rollup=True,
+        )
+        return data, c.auth
 
 
 async def fetch_queues(auth: CMAuth):
     """{pool_name: (core, mem, max_apps)}"""
-    async with YQMCLient(config.CM_HOST, auth) as client:
-        queues = await client.get_data()
+    async with YQMCLient(config.CM_HOST, auth) as c:
+        queues = await c.get_config()
     return {
         x.queuePath: (
             int(x.effectiveMaxResource.vcores, 10),
             int(x.effectiveMaxResource.memory, 10),
-            int(x.properties.maxApplications, 10),
+            int(x.properties.maxApplications or "0", 10),
         )
         for x in queues.queues
         if x.queuePath.count(".") >= 2
@@ -108,7 +127,7 @@ def fetch_queues_from_file(fp: Path | str):
         for row in fr:
             if row[3]:
                 vcore, mem = (x.partition(" ")[0] for x in row[7].split(", "))
-                data[row[0]] = (int(vcore, 10), int(mem, 10), int(row[13], 10))
+                data[row[0]] = (int(vcore, 10), int(mem, 10), int(row[13] or "0", 10))
     return data
 
 
@@ -119,6 +138,20 @@ def open_db(fp: "Path | str"):
             "PRAGMA optimize; PRAGMA journal_mode = WAL; PRAGMA synchronous = NORMAL;"
         )
         cursor.execute("""CREATE TABLE IF NOT EXISTS pool_hourly (
+        `timestamp` DATETIME NOT NULL,
+        pool TEXT NOT NULL,
+        metric TEXT NOT NULL,
+        value REAL,
+        perc_value TEXT,
+        min REAL,
+        perc_min TEXT,
+        at_min DATETIME,
+        max REAL,
+        perc_max TEXT,
+        at_max DATETIME,
+        aggregations INTEGER,
+        CONSTRAINT PK PRIMARY KEY (`timestamp`,pool,metric))""")
+        cursor.execute("""CREATE TABLE IF NOT EXISTS pool_10min (
         `timestamp` DATETIME NOT NULL,
         pool TEXT NOT NULL,
         metric TEXT NOT NULL,
@@ -148,13 +181,13 @@ async def main(_args: "Sequence[str] | None" = None):
     auth = args.get_auth()
     match auth, args.metrics_file, args.yqm_file:
         case CMAuth(), None, None:
-            cm_metric, auth = await fetch_metrics(auth)
+            cm_metric, auth = await args.meth(auth)
             cm_queues = await fetch_queues(auth)
         case CMAuth(), Path() as metrics_file, None:
             cm_metric = TimeData.decode_json(metrics_file.read_bytes())
             cm_queues = await fetch_queues(auth)
         case CMAuth(), None, Path() as yqm_file:
-            cm_metric, auth = await fetch_metrics(auth)
+            cm_metric, auth = await args.meth(auth)
             cm_queues = fetch_queues_from_file(yqm_file)
         case _, Path() as metrics_file, Path() as yqm_file:
             cm_metric = TimeData.decode_json(metrics_file.read_bytes())
@@ -194,7 +227,7 @@ async def main(_args: "Sequence[str] | None" = None):
             args.parser.error("No output file is specified")
         with open_db(args.output) as cursor:
             cursor.executemany(
-                "insert or ignore into pool_hourly values "
+                f"insert or ignore into {args._tbl} values "
                 "(?, ?, ?, ?, ?, ?, ? ,? ,? ,?, ?, ?)",
                 (
                     data
@@ -225,6 +258,15 @@ def parse_args(args: "Sequence[str] | None" = None):
         action="version",
         help="print version",
         version=f"%(prog)s {__version__}",
+    )
+    parser.add_argument(
+        "-m",
+        action=MethodParseAction,
+        help="mode to use",
+        choices=("HOURLY", "10MIN"),
+        type=lambda s: s.strip().upper(),
+        default="HOURLY",
+        dest="meth",
     )
     parser.add_argument(
         "-o",

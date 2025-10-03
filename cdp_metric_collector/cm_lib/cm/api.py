@@ -1,13 +1,19 @@
 import logging
+from contextlib import asynccontextmanager
+from copy import copy
 
 from aiohttp import BasicAuth, ClientSession
 
+from cdp_metric_collector.cm_lib import config
 from cdp_metric_collector.cm_lib.errors import HTTPNotOK
 from cdp_metric_collector.cm_lib.utils import ABC, abstractmethod, encode_json_str
 
 TYPE_CHECKING = False
 if TYPE_CHECKING:
-    from typing import Any
+    from types import TracebackType
+    from typing import Any, Unpack
+
+    from aiohttp.client import _RequestOptions
 
     from .auth import CMAuth
 
@@ -15,45 +21,60 @@ logger = logging.getLogger(__name__)
 
 
 class APIClientBase(ABC):
-    _client: ClientSession
+    http: ClientSession
 
     @abstractmethod
     def __init__(self) -> None: ...
 
     async def __aenter__(self):
-        self._client = await self._client.__aenter__()
+        self.http = await self.http.__aenter__()
         await self.initialize()
         return self
 
-    async def __aexit__(self, *exc: "Any"):
-        await self._client.__aexit__(*exc)
+    async def __aexit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_val: BaseException | None,
+        exc_tb: "TracebackType | None",
+    ):
+        await self.http.__aexit__(exc_type, exc_val, exc_tb)
 
     async def initialize(self) -> None: ...
 
 
 class CMAPIClientBase(APIClientBase):
     auth: "CMAuth"
-    base_url: str
-    _session: str | None
+    base_url: str | None
+    session_id: str | None
 
-    def __init__(self, base_url: str, auth: "CMAuth", **kwargs: "Any"):
-        self._client = ClientSession(
+    def __init__(self, base_url: str | None, auth: "CMAuth", **kwargs: "Any"):
+        self.http = ClientSession(
             base_url,
             json_serialize=encode_json_str,
             **kwargs,
         )
-        self.auth = auth
+        self.auth = copy(auth)
         self.base_url = base_url
-        self._session = None
+        self.session_id = None
+
+    async def __aexit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_val: BaseException | None,
+        exc_tb: "TracebackType | None",
+    ):
+        await super().__aexit__(exc_type, exc_val, exc_tb)
+        if not (isinstance(exc_val, HTTPNotOK) and exc_val.status == 401):
+            config.save_auth(self.auth)
 
     async def initialize(self):
-        await self._get_cookies()
+        await self.get_cookies()
 
-    async def _get_cookies(self):
+    async def get_cookies(self):
         payload: dict[str, Any] = {"ssl": False}
         if self.auth.session:
             logger.debug("using %r as session authentication", self.auth.session)
-            self._client.cookie_jar.update_cookies({"SESSION": self.auth.session})
+            self.http.cookie_jar.update_cookies({"SESSION": self.auth.session})
             return
         elif self.auth.header:
             logger.debug("using %r as token authentication", self.auth.header)
@@ -63,15 +84,45 @@ class CMAPIClientBase(APIClientBase):
             payload["auth"] = BasicAuth(
                 login=self.auth.username, password=self.auth.password
             )
-        async with self._client.get("/api/v1/clusters", **payload) as resp:
-            if resp.status >= 400:
+        async with self.http.get("/api/v1/clusters", **payload) as r:
+            if r.status >= 400:
                 logger.error(
                     "got response code %s with header: %s",
-                    resp.status,
-                    resp.headers,
+                    r.status,
+                    r.headers,
                 )
-                raise HTTPNotOK(await resp.text())
-            if session := resp.cookies.get("SESSION"):
-                self._session = session.coded_value
-            logger.info("got session %r from cookies", self._session)
-            self._client.cookie_jar.update_cookies(resp.cookies)
+                raise HTTPNotOK(r.status, r.headers, await r.text())
+            if session := r.cookies.get("SESSION"):
+                self.session_id = session.coded_value
+            logger.debug("got session id %r from cookies", self.session_id)
+            self.http.cookie_jar.update_cookies(r.cookies)
+            self.auth.session = self.session_id
+
+    @asynccontextmanager
+    async def request(self, method: str, url: str, **kwargs: "Unpack[_RequestOptions]"):
+        retry = False
+        async with self.http.request(method, url, **kwargs) as r:
+            if r.status == 401:
+                self.auth.session = None
+                self.http.cookie_jar.clear()
+                retry = True
+            elif r.status >= 400:
+                logger.error(
+                    "got response code %s with header: %s",
+                    r.status,
+                    r.headers,
+                )
+                raise HTTPNotOK(r.status, r.headers, await r.text())
+            if not retry:
+                yield r
+                return
+        await self.get_cookies()
+        async with self.http.request(method, url, **kwargs) as r:
+            if r.status >= 400:
+                logger.error(
+                    "got response code %s with header: %s",
+                    r.status,
+                    r.headers,
+                )
+                raise HTTPNotOK(r.status, r.headers, await r.text())
+            yield r

@@ -1,18 +1,19 @@
-__version__ = "r2025.06.26-0"
+__version__ = "r2025.10.01-0"
 
 
 import logging
 import sys
 from argparse import ArgumentParser, RawTextHelpFormatter
 from datetime import datetime
-from enum import Enum
 from pathlib import Path
 
-from msgspec import UNSET, Struct, UnsetType, field
-
 from cdp_metric_collector.cm_lib import config
-from cdp_metric_collector.cm_lib.cm import CMAPIClientBase, CMAuth
-from cdp_metric_collector.cm_lib.errors import HTTPNotOK
+from cdp_metric_collector.cm_lib.cm import (
+    CMAPIClient,
+    CMAuth,
+    MetricContentType,
+    MetricRollupType,
+)
 from cdp_metric_collector.cm_lib.utils import (
     ARGSWithAuthBase,
     ensure_api_ver,
@@ -23,93 +24,21 @@ from cdp_metric_collector.cm_lib.utils import (
 TYPE_CHECKING = False
 if TYPE_CHECKING:
     from collections.abc import Sequence
-    from typing import Any
 
 logger = logging.getLogger(__name__)
 prog: str | None = None
 
 
-class ContentType(Enum):
-    JSON = "application/json"
-    CSV = "text/csv"
-
-
-class RollupType(Enum):
-    RAW = "RAW"
-    TEN_MINUTELY = "TEN_MINUTELY"
-    HOURLY = "HOURLY"
-    SIX_HOURLY = "SIX_HOURLY"
-    DAILY = "DAILY"
-    WEEKLY = "WEEKLY"
-
-    @classmethod
-    def _missing_(cls, value: "str | Any"):
-        for member in cls:
-            if member.name.lower() == value.lower():
-                return member
-        return None
-
-    def __str__(self) -> str:
-        return self.name
-
-
 class Arguments(ARGSWithAuthBase):
     parser: ArgumentParser
     verbose: bool
-    content_type: ContentType
-    rollup: RollupType | None
+    content_type: MetricContentType
+    rollup: MetricRollupType | None
     query: str | None
     query_file: Path | None
     from_dt: datetime | None
     to_dt: datetime | None
     output: Path | int
-
-
-class TimeSeriesPayload(Struct):
-    query: str
-    from_dt: str | UnsetType = field(name="from", default=UNSET)
-    to_dt: str | UnsetType = field(name="to", default=UNSET)
-    contentType: str | UnsetType = UNSET
-    desiredRollup: str | UnsetType = UNSET
-    mustUseDesiredRollup: bool | UnsetType = UNSET
-
-
-class CMMetricsClient(CMAPIClientBase):
-    async def timeseries(
-        self,
-        query: str,
-        *,
-        from_dt: datetime | None = None,
-        to_dt: datetime | None = None,
-        content_type: ContentType | None = None,
-        rollup: RollupType | None = None,
-        force_rollup: bool | None = None,
-    ):
-        data = TimeSeriesPayload(query)
-        if from_dt:
-            data.from_dt = from_dt.isoformat()
-        if to_dt:
-            data.to_dt = to_dt.isoformat()
-        if content_type:
-            data.contentType = content_type.value
-        if rollup:
-            data.desiredRollup = rollup.value
-        if force_rollup is not None:
-            data.mustUseDesiredRollup = force_rollup
-        logger.debug("sending payload %s", data)
-        async with self._client.post(
-            f"/api/v{config.CM_API_VER}/timeseries",
-            json=data,
-            ssl=False,
-        ) as resp:
-            if resp.status >= 400:
-                logger.error(
-                    "got response code %s with header: %s",
-                    resp.status,
-                    resp.headers,
-                )
-                raise HTTPNotOK(await resp.text())
-            return await resp.read()
 
 
 async def main(_args: "Sequence[str] | None" = None):
@@ -133,10 +62,10 @@ async def main(_args: "Sequence[str] | None" = None):
         query = args.query
 
     ensure_api_ver(11, config.CM_API_VER)
-    async with CMMetricsClient(config.CM_HOST, auth) as client:
+    async with CMAPIClient(config.CM_HOST, auth) as c:
         with open(args.output, "wb") as f_out:
             f_out.write(
-                await client.timeseries(
+                await c.timeseries(
                     query,
                     from_dt=args.from_dt,
                     to_dt=args.to_dt,
@@ -152,7 +81,7 @@ def parse_args(args: "Sequence[str] | None" = None):
         add_help=False,
         formatter_class=RawTextHelpFormatter,
     )
-    parser.set_defaults(parser=parser, content_type=ContentType.CSV)
+    parser.set_defaults(parser=parser, content_type=MetricContentType.CSV)
     misc = parser.add_argument_group()
     misc.add_argument("-h", "--help", action="help", help="print this help and exit")
     misc.add_argument(
@@ -214,8 +143,8 @@ def parse_args(args: "Sequence[str] | None" = None):
     param.add_argument(
         "--rollup",
         action="store",
-        type=RollupType,
-        choices=tuple(RollupType),
+        type=MetricRollupType,
+        choices=tuple(MetricRollupType),
         default=None,
         dest="rollup",
     )
@@ -223,14 +152,14 @@ def parse_args(args: "Sequence[str] | None" = None):
         "--json",
         action="store_const",
         help="get metrics as json",
-        const=ContentType.JSON,
+        const=MetricContentType.JSON,
         dest="content_type",
     )
     param.add_argument(
         "--csv",
         action="store_const",
         help="get metrics as CSV (default)",
-        const=ContentType.CSV,
+        const=MetricContentType.CSV,
         dest="content_type",
     )
     auth = parser.add_argument_group("authentication")

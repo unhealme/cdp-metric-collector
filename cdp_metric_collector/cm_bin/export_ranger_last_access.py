@@ -1,4 +1,4 @@
-__version__ = "b2025.06.26-0"
+__version__ = "b2025.10.01-0"
 
 
 import csv
@@ -10,19 +10,10 @@ from io import TextIOWrapper
 from pathlib import Path
 from typing import Generic, TypeVar, overload
 
-from aiohttp import BasicAuth, ClientSession, ClientTimeout
-
 from cdp_metric_collector.cm_lib import config
-from cdp_metric_collector.cm_lib.cm import APIClientBase, CMAuth
-from cdp_metric_collector.cm_lib.errors import HTTPNotOK
-from cdp_metric_collector.cm_lib.structs import Decodable, DTNoTZ
-from cdp_metric_collector.cm_lib.utils import (
-    ARGSBase,
-    encode_json_str,
-    parse_auth,
-    setup_logging,
-    wrap_async,
-)
+from cdp_metric_collector.cm_lib.cm import CMAuth
+from cdp_metric_collector.cm_lib.ranger import RangerClient
+from cdp_metric_collector.cm_lib.utils import ARGSBase, parse_auth, setup_logging
 
 TYPE_CHECKING = False
 if TYPE_CHECKING:
@@ -47,69 +38,6 @@ class Arguments(ARGSBase, Generic[_AT]):
     index: int
 
 
-class RangerVXAccessAudits(DTNoTZ):
-    accessType: str
-    clientIP: str
-    repoName: str
-    eventTime: datetime
-    requestUser: str
-
-
-class RangerAccessAudit(Decodable):
-    startIndex: int
-    pageSize: int
-    totalCount: int
-    resultSize: int
-    vXAccessAudits: list[RangerVXAccessAudits]
-
-
-class RangerClient(APIClientBase):
-    base_url: str
-
-    def __init__(self, base_url: str, user: str, passw: str) -> None:
-        self.base_url = base_url
-        self._client = ClientSession(
-            base_url,
-            auth=BasicAuth(user, passw),
-            timeout=ClientTimeout(total=None),
-        )
-
-    async def get_access_audit(
-        self,
-        start_date: date | None,
-        end_date: date | None,
-        service_name: str,
-        limit: int = 10000,
-        index: int = 0,
-    ):
-        data = {
-            "repoName": service_name,
-            "pageSize": limit,
-            "startIndex": index,
-            "excludeServiceUser": "false",
-            "sortBy": "eventTime",
-            "sortType": "desc",
-        }
-        if start_date:
-            data["startDate"] = start_date.strftime(r"%m/%d/%Y")
-        if end_date:
-            data["endDate"] = end_date.strftime(r"%m/%d/%Y")
-        logger.debug("sending data %s", encode_json_str(data))
-        async with self._client.get(
-            "/service/assets/accessAudit",
-            ssl=False,
-            params=data,
-        ) as resp:
-            if resp.status >= 400:
-                logger.error(
-                    "got response code %s with header: %s",
-                    resp.status,
-                    resp.headers,
-                )
-                raise HTTPNotOK(await resp.text())
-            return await wrap_async(RangerAccessAudit.decode_json, await resp.read())
-
-
 async def fetch_data(
     client: RangerClient,
     start_date: date,
@@ -120,7 +48,7 @@ async def fetch_data(
     max = -1
     while True:
         logger.debug("current index: %s / %s", index, max)
-        data = await client.get_access_audit(
+        data = await client.access_audit(
             start_date,
             end_date,
             service_name,
@@ -149,7 +77,7 @@ async def fetch_last_access(args: Arguments[Path | int] | Arguments[None]):
         user, passw = args.auth_basic
     else:
         args.parser.error("No auth mechanism is passed")
-    async with RangerClient(config.RANGER_HOST, user, passw) as client:
+    async with RangerClient(config.RANGER_HOST, user, passw) as c:
         uid: set[str] = set()
         if args.append_output:
             if not isinstance(args.output, Path):
@@ -163,7 +91,7 @@ async def fetch_last_access(args: Arguments[Path | int] | Arguments[None]):
         if args.output is None:
             result: list[tuple[str, str, datetime]] = []
             async for data in fetch_data(
-                client,
+                c,
                 args.start_date,
                 args.end_date,
                 args.service_name,
@@ -185,7 +113,7 @@ async def fetch_last_access(args: Arguments[Path | int] | Arguments[None]):
                 if not args.append_output:
                     fw.writerow(("Name", "Client IP", "Last Access"))
                 async for data in fetch_data(
-                    client,
+                    c,
                     args.start_date,
                     args.end_date,
                     args.service_name,

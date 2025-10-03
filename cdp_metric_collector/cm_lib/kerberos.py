@@ -9,18 +9,18 @@ if TYPE_CHECKING:
 
 
 class KerberosClientABC(ABC):
-    _client: AsyncClient
+    http: AsyncClient
 
     @abstractmethod
     def __init__(self) -> None: ...
 
     async def __aenter__(self):
-        self._client = await self._client.__aenter__()
+        self.http = await self.http.__aenter__()
         await self.initialize()
         return self
 
     async def __aexit__(self, *exc: "Any"):
-        await self._client.__aexit__(*exc)
+        await self.http.__aexit__(*exc)
 
     async def initialize(self) -> None: ...
 
@@ -29,7 +29,7 @@ class KerberosClientBase(KerberosClientABC):
     base_url: str
 
     def __init__(self, base_url: str, **kwargs: "Any") -> None:
-        self._client = AsyncClient(
+        self.http = AsyncClient(
             auth=HTTPSPNEGOAuth(delegate=True),
             base_url=base_url,
             verify=False,

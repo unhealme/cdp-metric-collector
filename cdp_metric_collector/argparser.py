@@ -77,17 +77,19 @@ def parse(_args: "Sequence[str] | None" = None):
             },
             "hive": {
                 "queries": Module(".export_hive_query"),
-                # "tables": Module(".export_hive_tables", async_main=False),
             },
             "ranger": {
                 "audit-log": Module(".export_ranger_audit_log"),
                 "last-access": Module(".export_ranger_audit_log"),
                 "mappings": Module(".export_ranger_mapping"),
+                "users": Module(".export_ranger_user"),
             },
             "spark-history": Module(".export_spark_history"),
-            "yarn-queues": Module(".export_yarn_qm"),
+            "yarn": {
+                "queues": Module(".export_yarn_qm"),
+                "pool-stats": Module(".export_yarn_pool_stats"),
+            },
         },
-        "get-pool": {"hourly-stats": Module(".get_pool_hourly_stats")},
     }
     main = argparse.ArgumentParser("cdp-metric-collector")
     main.add_argument(

@@ -4,19 +4,21 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"reflect"
 	"runtime"
+	"strings"
 
 	arg "github.com/alexflint/go-arg"
 )
 
 type Arguments struct {
-	Parser *arg.Parser    `arg:"-"`
-	Outf   io.WriteCloser `arg:"-"`
+	_Parser *arg.Parser    `arg:"-"`
+	_Outf   io.WriteCloser `arg:"-"`
 
 	Paths    []string `arg:"positional,required" placeholder:"PATH"`
 	Out      string   `arg:"-o,--" placeholder:"FILE" default:"-"`
 	Append   bool     `arg:"--append" help:"append output to FILE"`
-	DirOnly  bool     `arg:"--dir-only" help:"append output to FILE"`
+	DirOnly  bool     `arg:"--dir-only" help:"only export directories"`
 	DateMax  DateTime `arg:"--older-than" placeholder:"TIME" default:"9999-12-31"`
 	DateMin  DateTime `arg:"--newer-than" placeholder:"TIME"  default:"0000-01-01"`
 	MaxDepth int      `arg:"-d,--max-depth" placeholder:"NUM"  default:"-1"`
@@ -25,6 +27,20 @@ type Arguments struct {
 
 func (a *Arguments) String() string {
 	return fmt.Sprintf("%#v", a)
+}
+
+func (a Arguments) ToArgs() []any {
+	var (
+		args []any
+		v    = reflect.ValueOf(a)
+	)
+	for _, f := range reflect.VisibleFields(reflect.TypeOf(a)) {
+		if !strings.HasPrefix(f.Name, "_") {
+			args = append(args, f.Name)
+			args = append(args, fmt.Sprintf("%#v", v.FieldByName(f.Name)))
+		}
+	}
+	return args
 }
 
 func (*Arguments) Version() string {
@@ -36,9 +52,9 @@ func ParseArgs() (*Arguments, error) {
 		args   = &Arguments{}
 		parser = arg.MustParse(args)
 	)
-	args.Parser = parser
+	args._Parser = parser
 	if args.Out == "-" {
-		args.Outf = os.Stdout
+		args._Outf = os.Stdout
 	} else {
 		flags := os.O_WRONLY | os.O_CREATE
 		if args.Append {
@@ -50,7 +66,7 @@ func ParseArgs() (*Arguments, error) {
 		if err != nil {
 			return nil, err
 		}
-		args.Outf = f
+		args._Outf = f
 	}
 	return args, nil
 }

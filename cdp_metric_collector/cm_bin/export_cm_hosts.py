@@ -1,4 +1,4 @@
-__version__ = "r2025.06.26-0"
+__version__ = "r2025.10.01-0"
 
 
 import csv
@@ -10,15 +10,12 @@ from pathlib import Path
 from msgspec import UNSET
 
 from cdp_metric_collector.cm_lib import config
-from cdp_metric_collector.cm_lib.cm import CMAPIClientBase, CMAuth
-from cdp_metric_collector.cm_lib.errors import HTTPNotOK
-from cdp_metric_collector.cm_lib.structs.cm import Hosts
+from cdp_metric_collector.cm_lib.cm import CMAPIClient, CMAuth, Hosts
 from cdp_metric_collector.cm_lib.utils import (
     ARGSWithAuthBase,
     parse_auth,
     pretty_size,
     setup_logging,
-    wrap_async,
 )
 
 TYPE_CHECKING = False
@@ -36,26 +33,9 @@ class Arguments(ARGSWithAuthBase):
     hosts_file: Path | None
 
 
-class CMMetricsClient(CMAPIClientBase):
-    async def hosts(self):
-        async with self._client.get(
-            f"/api/v{config.CM_API_VER}/hosts",
-            params="view=FULL",
-            ssl=False,
-        ) as resp:
-            if resp.status >= 400:
-                logger.error(
-                    "got response code %s with header: %s",
-                    resp.status,
-                    resp.headers,
-                )
-                raise HTTPNotOK(await resp.text())
-            return await wrap_async(Hosts.decode_json, await resp.read())
-
-
 async def fetch_hosts(auth: CMAuth):
-    async with CMMetricsClient(config.CM_HOST, auth) as client:
-        return await client.hosts()
+    async with CMAPIClient(config.CM_HOST, auth) as c:
+        return await c.hosts()
 
 
 async def main(_args: "Sequence[str] | None" = None):

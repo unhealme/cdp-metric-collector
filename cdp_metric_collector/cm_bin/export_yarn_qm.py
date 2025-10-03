@@ -1,23 +1,20 @@
-__version__ = "r2025.06.26-0"
+__version__ = "r2025.10.01-0"
 
 
 import logging
 import sys
 from argparse import ArgumentParser, RawTextHelpFormatter
 from pathlib import Path
-from typing import TYPE_CHECKING, Literal, overload
 
 from cdp_metric_collector.cm_lib import config
-from cdp_metric_collector.cm_lib.cm import CMAPIClientBase, CMAuth
-from cdp_metric_collector.cm_lib.errors import HTTPNotOK
-from cdp_metric_collector.cm_lib.structs.yqm import YarnQMResponse
+from cdp_metric_collector.cm_lib.cm import CMAuth, YarnQMResponse, YQMCLient
 from cdp_metric_collector.cm_lib.utils import (
     ARGSWithAuthBase,
     parse_auth,
     setup_logging,
-    wrap_async,
 )
 
+TYPE_CHECKING = False
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
@@ -33,40 +30,6 @@ class Arguments(ARGSWithAuthBase):
     as_json: bool
 
 
-class YQMCLient(CMAPIClientBase):
-    async def initialize(self):
-        await self._get_cookies()
-        self._client.headers.update(
-            {
-                "Accept": "application/json, text/plain, */*",
-                "Referer": f"{config.CM_HOST}/cmf/clusters/{config.CM_CLUSTER_NAME}/"
-                "queue-manager/",
-            }
-        )
-
-    @overload
-    async def get_data(self, raw: Literal[True]) -> bytes: ...
-    @overload
-    async def get_data(self, raw: bool = False) -> YarnQMResponse: ...
-    async def get_data(self, raw: bool = False):
-        async with self._client.get(
-            f"/cmf/clusters/{config.CM_CLUSTER_NAME}/queue-manager-api/api/v1/environments/dev"
-            f"/clusters/{config.CM_CLUSTER_NAME}/resources/scheduler/partitions/default/queues",
-            ssl=False,
-        ) as resp:
-            if resp.status >= 400:
-                logger.error(
-                    "got response code %s with header: %s",
-                    resp.status,
-                    resp.headers,
-                )
-                raise HTTPNotOK(await resp.text())
-            data = await resp.read()
-        if raw:
-            return data
-        return await wrap_async(YarnQMResponse.decode_json, data)
-
-
 async def main(_args: "Sequence[str] | None" = None):
     args = parse_args(_args)
     setup_logging(("cdp_metric_collector",), debug=args.verbose)
@@ -78,12 +41,12 @@ async def main(_args: "Sequence[str] | None" = None):
         auth = args.get_auth()
         if not auth:
             args.parser.error("No auth mechanism is passed")
-        async with YQMCLient(config.CM_HOST, auth) as client:
+        async with YQMCLient(config.CM_HOST, auth) as c:
             if args.as_json:
                 with open(args.output, "wb") as fo:
-                    fo.write(await client.get_data(raw=True))
+                    fo.write(await c.get_config(raw=True))
                 return
-            data = await client.get_data()
+            data = await c.get_config()
     data.serialize_to_csv(args.output)
 
 
