@@ -11,7 +11,7 @@ from pathlib import Path
 from msgspec import json
 
 from cdp_metric_collector.cm_lib import config
-from cdp_metric_collector.cm_lib.cm import CMAuth
+from cdp_metric_collector.cm_lib.cm import Creds
 from cdp_metric_collector.cm_lib.ranger import RangerClient, RangerVXUsers
 from cdp_metric_collector.cm_lib.utils import ARGSBase, parse_auth, setup_logging
 
@@ -30,7 +30,7 @@ class Arguments(ARGSBase):
     output: str | None
     diff: str | None
     auth_basic: tuple[str, str] | None
-    auth_config: CMAuth | None
+    auth_config: Creds | None
 
 
 async def paginate(client: RangerClient):
@@ -183,7 +183,7 @@ def parse_args(args: "Sequence[str] | None" = None):
         action="store",
         help="authentication config file path",
         metavar="FILE",
-        type=CMAuth.from_path,
+        type=Creds.from_path,
         default=None,
         dest="auth_config",
     )

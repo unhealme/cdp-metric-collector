@@ -1,12 +1,12 @@
 from msgspec import Struct
 
-from cdp_metric_collector.cm_lib.cm import CMAuth
+from cdp_metric_collector.cm_lib.cm import Creds
 from cdp_metric_collector.cm_lib.structs import Decodable
 
 
 class CMConfig(Struct):
     api_ver: int
-    auth: CMAuth
+    auth: Creds
     cluster_name: str
     file_browser_path: str
     host: str

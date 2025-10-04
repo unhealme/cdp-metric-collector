@@ -1,4 +1,4 @@
-module github.com/unhealme/cdp-metric-collector
+module github.com/unhealme/cdp-metric-collector/go
 
 go 1.25.1
 
@@ -14,6 +14,7 @@ require (
 	atomicgo.dev/keyboard v0.2.9 // indirect
 	atomicgo.dev/schedule v0.1.0 // indirect
 	github.com/alexflint/go-scalar v1.2.0 // indirect
+	github.com/clipperhouse/uax29/v2 v2.2.0 // indirect
 	github.com/containerd/console v1.0.5 // indirect
 	github.com/gookit/color v1.6.0 // indirect
 	github.com/hashicorp/go-uuid v1.0.3 // indirect
@@ -23,13 +24,12 @@ require (
 	github.com/jcmturner/goidentity/v6 v6.0.1 // indirect
 	github.com/jcmturner/rpc/v2 v2.0.3 // indirect
 	github.com/lithammer/fuzzysearch v1.1.8 // indirect
-	github.com/mattn/go-runewidth v0.0.16 // indirect
-	github.com/rivo/uniseg v0.4.7 // indirect
+	github.com/mattn/go-runewidth v0.0.19 // indirect
 	github.com/xo/terminfo v0.0.0-20220910002029-abceb7e1c41e // indirect
-	golang.org/x/crypto v0.41.0 // indirect
-	golang.org/x/net v0.43.0 // indirect
-	golang.org/x/sys v0.35.0 // indirect
-	golang.org/x/term v0.34.0 // indirect
-	golang.org/x/text v0.28.0 // indirect
-	google.golang.org/protobuf v1.36.8 // indirect
+	golang.org/x/crypto v0.42.0 // indirect
+	golang.org/x/net v0.44.0 // indirect
+	golang.org/x/sys v0.36.0 // indirect
+	golang.org/x/term v0.35.0 // indirect
+	golang.org/x/text v0.29.0 // indirect
+	google.golang.org/protobuf v1.36.10 // indirect
 )

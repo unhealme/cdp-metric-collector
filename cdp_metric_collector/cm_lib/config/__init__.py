@@ -12,7 +12,7 @@ from .loader import load_all, load_with, save_all, save_auth
 
 TYPE_CHECKING = False
 if TYPE_CHECKING:
-    from cdp_metric_collector.cm_lib.cm import CMAuth
+    from cdp_metric_collector.cm_lib.cm import Creds
 
     from .structs import Config
 
@@ -20,7 +20,7 @@ _CONFIG: "Config"
 
 # CM
 CM_API_VER: int
-CM_AUTH: "CMAuth | None" = None
+CM_AUTH: "Creds | None" = None
 CM_CLUSTER_NAME: str
 FILE_BROWSER_PATH: str
 CM_HOST: str

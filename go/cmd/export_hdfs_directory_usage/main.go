@@ -3,8 +3,8 @@ package main
 import (
 	"encoding/csv"
 
-	"github.com/unhealme/cdp-metric-collector/internal"
-	"github.com/unhealme/cdp-metric-collector/internal/hdfs"
+	"github.com/unhealme/cdp-metric-collector/go/internal"
+	"github.com/unhealme/cdp-metric-collector/go/internal/hdfs"
 )
 
 const Version = "r2025.09.27-0"

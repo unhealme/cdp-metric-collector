@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Generic, TypeVar, overload
 
 from cdp_metric_collector.cm_lib import config
-from cdp_metric_collector.cm_lib.cm import CMAuth
+from cdp_metric_collector.cm_lib.cm import Creds
 from cdp_metric_collector.cm_lib.ranger import RangerClient
 from cdp_metric_collector.cm_lib.utils import ARGSBase, parse_auth, setup_logging
 
@@ -31,7 +31,7 @@ class Arguments(ARGSBase, Generic[_AT]):
     output: _AT
     append_output: bool
     auth_basic: tuple[str, str] | None
-    auth_config: CMAuth | None
+    auth_config: Creds | None
     start_date: date
     end_date: date | None
     service_name: str
@@ -76,7 +76,10 @@ async def fetch_last_access(args: Arguments[Path | int] | Arguments[None]):
     elif args.auth_basic:
         user, passw = args.auth_basic
     else:
-        args.parser.error("No auth mechanism is passed")
+        if not config.CM_AUTH:
+            args.parser.error("No auth mechanism is passed")
+        user = config.CM_AUTH.username
+        passw = config.CM_AUTH.password
     async with RangerClient(config.RANGER_HOST, user, passw) as c:
         uid: set[str] = set()
         if args.append_output:
@@ -219,7 +222,7 @@ def parse_args(args: "Sequence[str] | None" = None) -> Arguments[Path | int]:
         action="store",
         help="authentication config file path",
         metavar="FILE",
-        type=CMAuth.from_path,
+        type=Creds.from_path,
         default=None,
         dest="auth_config",
     )

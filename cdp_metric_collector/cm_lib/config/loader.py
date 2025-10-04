@@ -58,5 +58,8 @@ def save_all():
 
 
 def save_auth(auth: "CMAuth"):
-    config._CONFIG.cm.auth = auth
+    if fp := auth.path:
+        Path(fp).write_bytes(yaml.encode(auth.creds))
+        return
+    config._CONFIG.cm.auth = auth.creds
     config.save_all()

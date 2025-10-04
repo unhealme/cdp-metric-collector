@@ -9,7 +9,7 @@ from collections import defaultdict
 from pathlib import Path
 
 from cdp_metric_collector.cm_lib import config
-from cdp_metric_collector.cm_lib.cm import CMAuth
+from cdp_metric_collector.cm_lib.cm import Creds
 from cdp_metric_collector.cm_lib.ranger import RangerClient
 from cdp_metric_collector.cm_lib.utils import ARGSBase, parse_auth, setup_logging
 
@@ -29,7 +29,7 @@ class Arguments(ARGSBase):
     service: str
     filters: list[tuple[str, str]]
     auth_basic: tuple[str, str] | None
-    auth_config: CMAuth | None
+    auth_config: Creds | None
 
 
 async def fetch_data(
@@ -67,7 +67,10 @@ async def main(_args: "Sequence[str] | None" = None):
     elif args.auth_basic:
         user, passw = args.auth_basic
     else:
-        args.parser.error("No auth mechanism is passed")
+        if not config.CM_AUTH:
+            args.parser.error("No auth mechanism is passed")
+        user = config.CM_AUTH.username
+        passw = config.CM_AUTH.password
     if not args.filters:
         args.parser.error("atleast '-U' or '-G' must be specified")
     result: defaultdict[Schema, defaultdict[Filter, Access]] = defaultdict(
@@ -166,7 +169,7 @@ def parse_args(args: "Sequence[str] | None" = None):
         action="store",
         help="authentication config file path",
         metavar="FILE",
-        type=CMAuth.from_path,
+        type=Creds.from_path,
         default=None,
         dest="auth_config",
     )

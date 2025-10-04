@@ -72,17 +72,17 @@ class CMAPIClientBase(APIClientBase):
 
     async def get_cookies(self):
         payload: dict[str, Any] = {"ssl": False}
-        if self.auth.session:
-            logger.debug("using %r as session authentication", self.auth.session)
-            self.http.cookie_jar.update_cookies({"SESSION": self.auth.session})
+        if session := self.auth.creds.session:
+            logger.debug("using %r as session authentication", session)
+            self.http.cookie_jar.update_cookies({"SESSION": session})
             return
-        elif self.auth.header:
-            logger.debug("using %r as token authentication", self.auth.header)
-            payload["headers"] = {"Authorization": f"Basic {self.auth.header}"}
+        elif header := self.auth.creds.header:
+            logger.debug("using %r as token authentication", header)
+            payload["headers"] = {"Authorization": f"Basic {header}"}
         else:
             logger.debug("using user and password authentication")
             payload["auth"] = BasicAuth(
-                login=self.auth.username, password=self.auth.password
+                login=self.auth.creds.username, password=self.auth.creds.password
             )
         async with self.http.get("/api/v1/clusters", **payload) as r:
             if r.status >= 400:
@@ -96,14 +96,14 @@ class CMAPIClientBase(APIClientBase):
                 self.session_id = session.coded_value
             logger.debug("got session id %r from cookies", self.session_id)
             self.http.cookie_jar.update_cookies(r.cookies)
-            self.auth.session = self.session_id
+            self.auth.creds.session = self.session_id
 
     @asynccontextmanager
     async def request(self, method: str, url: str, **kwargs: "Unpack[_RequestOptions]"):
         retry = False
         async with self.http.request(method, url, **kwargs) as r:
             if r.status == 401:
-                self.auth.session = None
+                self.auth.creds.session = None
                 self.http.cookie_jar.clear()
                 retry = True
             elif r.status >= 400:

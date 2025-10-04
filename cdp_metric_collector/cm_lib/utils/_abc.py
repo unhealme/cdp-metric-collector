@@ -78,26 +78,22 @@ class ARGSWithAuthBase(ARGSBase):
                 self.auth_header,
             )
         ):
+            from cdp_metric_collector.cm_lib.cm.auth import CMAuth
             from cdp_metric_collector.cm_lib.config import CM_AUTH
 
             if CM_AUTH is None:
                 return None
-            return CM_AUTH
+            return CMAuth(CM_AUTH)
         elif self.auth_config:
             return self.auth_config
         else:
-            from cdp_metric_collector.cm_lib.cm.auth import CMAuth
+            from cdp_metric_collector.cm_lib.cm.auth import CMAuth, Creds
 
             if self.auth_basic:
                 user, passw = self.auth_basic
             else:
                 user = passw = ""
-            return CMAuth(
-                self.auth_session,
-                user,
-                passw,
-                self.auth_header,
-            )
+            return CMAuth(Creds(self.auth_session, user, passw, self.auth_header))
 
 
 class ConvertibleToString(Protocol):

@@ -4,7 +4,7 @@ import (
 	"strconv"
 
 	hdfs "github.com/colinmarc/hdfs/v2"
-	"github.com/unhealme/cdp-metric-collector/internal"
+	"github.com/unhealme/cdp-metric-collector/go/internal"
 )
 
 const ISOTimeFormat = "2006-01-02 15:04:05.999999"

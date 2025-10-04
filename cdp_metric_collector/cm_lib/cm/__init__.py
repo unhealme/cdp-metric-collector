@@ -6,6 +6,7 @@ __all__ = (
     "CMAPIClientBase",
     "CMAuth",
     "Commands",
+    "Creds",
     "FileBrowserPath",
     "HealthIssues",
     "Hosts",
@@ -23,7 +24,7 @@ __all__ = (
 
 
 from .api import APIClientBase, CMAPIClientBase
-from .auth import CMAuth
+from .auth import CMAuth, Creds
 from .client import (
     CMAPIClient,
     MetricContentType,
