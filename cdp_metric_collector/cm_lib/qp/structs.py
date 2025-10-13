@@ -68,7 +68,7 @@ class QueryExtendedDetails(Struct):
     def get_config(self):
         if self.configuration:
             return encode_json_str(self.configuration)
-        return ""
+        return None
 
 
 class QueryExtendedData(QueryInfo):

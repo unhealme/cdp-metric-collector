@@ -1,20 +1,22 @@
-__version__ = "b2025.10.01-0"
+__version__ = "r2025.10.13-1"
 
 
 import argparse
-import asyncio
 import csv
 import logging
+import sqlite3
 import sys
+from asyncio.tasks import gather
+from contextlib import contextmanager
 from datetime import datetime
 from enum import Enum
 from io import TextIOWrapper
-from pathlib import Path
 
 from cdp_metric_collector.cm_lib import config
 from cdp_metric_collector.cm_lib.qp import DagInfoData, HUEQPClient, QueryInfo
 from cdp_metric_collector.cm_lib.utils import (
     ARGSBase,
+    encode_json_str,
     pretty_size,
     setup_logging,
     strfdelta,
@@ -23,7 +25,8 @@ from cdp_metric_collector.cm_lib.yarn import YARNRMClient
 
 TYPE_CHECKING = False
 if TYPE_CHECKING:
-    from collections.abc import Awaitable, Iterable, Sequence
+    from collections.abc import Awaitable, Sequence
+    from pathlib import Path
     from typing import Any
 
 logger = logging.getLogger(__name__)
@@ -36,16 +39,56 @@ class CMD(Enum):
 
 
 class Arguments(ARGSBase):
+    parser: argparse.ArgumentParser
     command: CMD
     verbose: bool
-    output: Path | int
+    output: str | None
     start_time: datetime
     end_time: datetime
     all_history: bool
     query_id: str
+    sql_output: bool
 
 
-async def get_row(
+@contextmanager
+def open_db(fp: "Path | str"):
+    with sqlite3.connect(fp, check_same_thread=False) as conn:
+        cursor = conn.executescript(
+            "PRAGMA optimize; PRAGMA journal_mode = WAL; PRAGMA synchronous = NORMAL;"
+        )
+        cursor.executescript("""
+        CREATE TABLE IF NOT EXISTS queries (
+            query_id TEXT NOT NULL,
+            application_id TEXT,
+            start_time datetime NOT NULL,
+            end_time datetime,
+            `user` TEXT NOT NULL,
+            queue TEXT,
+            status TEXT NOT NULL,
+            config TEXT,
+            `query` TEXT,
+            data_read INTEGER,
+            data_written INTEGER,
+            tables_read TEXT,
+            tables_written TEXT,
+            cbo_enabled TEXT NOT NULL,
+            CONSTRAINT queries_pk PRIMARY KEY (query_id)
+        );
+        CREATE INDEX IF NOT EXISTS queries_application_id_IDX ON queries (application_id);
+        CREATE INDEX IF NOT EXISTS queries_start_time_IDX ON queries (start_time);
+        CREATE INDEX IF NOT EXISTS queries_end_time_IDX ON queries (end_time);
+        CREATE INDEX IF NOT EXISTS queries_user_IDX ON queries (`user`);
+        CREATE INDEX IF NOT EXISTS queries_queue_IDX ON queries (queue);
+        CREATE INDEX IF NOT EXISTS queries_status_IDX ON queries (status);
+        """)
+        try:
+            yield cursor
+        finally:
+            cursor.close()
+            conn.commit()
+
+
+async def get_row_csv(
     client: HUEQPClient,
     q: QueryInfo,
     dag_info: DagInfoData | None,
@@ -59,11 +102,11 @@ async def get_row(
                 q.queryId,
                 dag_info.applicationId,
                 start.isoformat(" "),
-                end.isoformat(" ") if end else "-",
+                end.isoformat(" ") if end else "",
                 qe.requestUser,
                 qe.queueName,
                 qe.status,
-                qe.details.get_config(),
+                qe.details.get_config() or "",
                 strfdelta(
                     elapsed,
                     "%(days)dd %(hours)02dh:%(minutes)02dm:%(seconds)02ds",
@@ -72,8 +115,8 @@ async def get_row(
                 len(qe.query or ""),
                 "" if qe.dataRead is None else pretty_size(qe.dataRead),
                 "" if qe.dataWritten is None else pretty_size(qe.dataWritten),
-                ", ".join(map(str, qe.tablesRead)),
-                ", ".join(map(str, qe.tablesWritten)),
+                ", ".join([str(t) for t in qe.tablesRead]),
+                ", ".join([str(t) for t in qe.tablesWritten]),
                 qe.usedCBO,
             )
         else:
@@ -82,7 +125,7 @@ async def get_row(
                 q.queryId,
                 dag_info.applicationId,
                 start.isoformat(" "),
-                end.isoformat(" ") if end else "-",
+                end.isoformat(" ") if end else "",
                 "",
                 dag_info.queueName,
                 dag_info.status,
@@ -107,11 +150,11 @@ async def get_row(
                 q.queryId,
                 "",
                 start.isoformat(" "),
-                end.isoformat(" ") if end else "-",
+                end.isoformat(" ") if end else "",
                 qe.requestUser,
                 qe.queueName,
                 qe.status,
-                qe.details.get_config(),
+                qe.details.get_config() or "",
                 strfdelta(
                     elapsed,
                     "%(days)dd %(hours)02dh:%(minutes)02dm:%(seconds)02ds",
@@ -120,8 +163,8 @@ async def get_row(
                 len(qe.query or ""),
                 "" if qe.dataRead is None else pretty_size(qe.dataRead),
                 "" if qe.dataWritten is None else pretty_size(qe.dataWritten),
-                ", ".join(map(str, qe.tablesRead)),
-                ", ".join(map(str, qe.tablesWritten)),
+                ", ".join([str(t) for t in qe.tablesRead]),
+                ", ".join([str(t) for t in qe.tablesWritten]),
                 qe.usedCBO,
             )
         else:
@@ -130,7 +173,7 @@ async def get_row(
                 q.queryId,
                 "",
                 start.isoformat(" "),
-                end.isoformat(" ") if end else "-",
+                end.isoformat(" ") if end else "",
                 "",
                 "",
                 "",
@@ -149,36 +192,62 @@ async def get_row(
             )
 
 
+async def get_row_sql(
+    client: HUEQPClient,
+    q: QueryInfo,
+    dag_info: DagInfoData | None,
+) -> tuple["Any", ...]:
+    qe = (await client.query_detail(q.queryId)).query
+    start, end, _ = qe.duration()
+    return (
+        q.queryId,
+        dag_info.applicationId if dag_info else None,
+        start.isoformat(" ", "milliseconds"),
+        end.isoformat(" ", "milliseconds") if end else None,
+        qe.requestUser,
+        qe.queueName or None,
+        qe.status,
+        qe.details.get_config(),
+        qe.query,
+        qe.dataRead,
+        qe.dataWritten,
+        encode_json_str([str(t) for t in qe.tablesRead]),
+        encode_json_str([str(t) for t in qe.tablesWritten]),
+        str(qe.usedCBO),
+    )
+
+
 async def export_data(
     client: HUEQPClient,
     start_time: datetime,
     end_time: datetime,
     all_history: bool,
+    sql: bool,
 ):
+    stq = int(start_time.timestamp() * 1000)
+    etq = int(end_time.timestamp() * 1000)
+    fetch_row = get_row_sql if sql else get_row_csv
+
     async def fetch_data():
         offset = 0
         qlen = -1
         while qlen != 0:
-            q = await client.search_query(stq, etq, offset=max(0, offset + qlen))
-            qlen = len(q.queries)
+            sq = await client.search_query(stq, etq, offset=max(0, offset + qlen))
+            qlen = len(sq.queries)
             logger.debug("fetched %s queries", qlen)
             offset = offset + qlen
-            yield q.queries
+            yield sq.queries
 
-    stq = int(start_time.timestamp() * 1000)
-    etq = int(end_time.timestamp() * 1000)
-    tasks: list[Awaitable[Iterable[Any]]] = []
+    tasks: list[Awaitable[tuple[Any, ...]]] = []
     async for queries in fetch_data():
         for q in queries:
             try:
                 dag_info = next(x.dagInfo for x in q.dags)
-                tasks.append(get_row(client, q, dag_info))
+                tasks.append(fetch_row(client, q, dag_info))
             except StopIteration:
                 if all_history:
-                    tasks.append(get_row(client, q, None))
-                else:
-                    continue
-        yield await asyncio.gather(*tasks)
+                    tasks.append(fetch_row(client, q, None))
+        yield await gather(*tasks)
         tasks.clear()
 
 
@@ -239,41 +308,59 @@ async def main(_args: "Sequence[str] | None" = None):
                     )
                 )
             case CMD.HISTORY:
-                csv.field_size_limit(sys.maxsize)
-                with TextIOWrapper(
-                    open(args.output, "wb", 0),
-                    encoding="utf-8",
-                    newline="",
-                    write_through=True,
-                ) as f:
-                    fw = csv.writer(f)
-                    fw.writerow(
-                        (
-                            "Query ID",
-                            "Application ID",
-                            "Start Time",
-                            "End Time",
-                            "User",
-                            "Queue",
-                            "Status",
-                            "Config",
-                            "Elapsed Time",
-                            "Query",
-                            "Query Length",
-                            "Data Read",
-                            "Data Written",
-                            "Tables Read",
-                            "Tables Written",
-                            "CBO Enabled",
+                if args.sql_output:
+                    if not args.output:
+                        args.parser.error("sql output must have '-o' set")
+                    with open_db(args.output) as cursor:
+                        async for rows in export_data(
+                            c,
+                            args.start_time,
+                            args.end_time,
+                            args.all_history,
+                            sql=True,
+                        ):
+                            cursor.executemany(
+                                "insert or replace into queries values"
+                                "(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                                rows,
+                            )
+                else:
+                    csv.field_size_limit(sys.maxsize)
+                    with TextIOWrapper(
+                        open(args.output or sys.stdout.fileno(), "wb", 0),
+                        encoding="utf-8",
+                        newline="",
+                        write_through=True,
+                    ) as f:
+                        fw = csv.writer(f)
+                        fw.writerow(
+                            (
+                                "Query ID",
+                                "Application ID",
+                                "Start Time",
+                                "End Time",
+                                "User",
+                                "Queue",
+                                "Status",
+                                "Config",
+                                "Elapsed Time",
+                                "Query",
+                                "Query Length",
+                                "Data Read",
+                                "Data Written",
+                                "Tables Read",
+                                "Tables Written",
+                                "CBO Enabled",
+                            )
                         )
-                    )
-                    async for rows in export_data(
-                        c,
-                        args.start_time,
-                        args.end_time,
-                        args.all_history,
-                    ):
-                        fw.writerows(rows)
+                        async for rows in export_data(
+                            c,
+                            args.start_time,
+                            args.end_time,
+                            args.all_history,
+                            sql=False,
+                        ):
+                            fw.writerows(rows)
 
 
 def parse_args(args: "Sequence[str] | None" = None):
@@ -327,12 +414,16 @@ def parse_args(args: "Sequence[str] | None" = None):
         dest="all_history",
     )
     history.add_argument(
+        "--sql",
+        action="store_true",
+        help="set output format to sqlite instead of csv",
+        dest="sql_output",
+    )
+    history.add_argument(
         "-o",
         action="store",
         help="dump result to FILE instead of stdout",
         metavar="FILE",
-        type=Path,
-        default=sys.stdout.fileno(),
         dest="output",
     )
     detail = subparser.add_parser("detail", help="get query detail for hive query id")

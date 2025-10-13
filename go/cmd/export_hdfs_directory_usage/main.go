@@ -7,7 +7,7 @@ import (
 	"github.com/unhealme/cdp-metric-collector/go/internal/hdfs"
 )
 
-const Version = "r2025.09.27-0"
+const Version = "r2025.10.09-0"
 
 var (
 	logger = internal.DefaultLogger()
@@ -37,10 +37,12 @@ func main() {
 		logger.Level = internal.LogLevelDebug
 	}
 	logger.Debug("successfully parsed arguments", logger.Args(args.ToArgs()...))
+	logger.Debug("creating HDFS client...")
 	c, err := hdfs.GetClient()
 	if err != nil {
 		logger.Fatal("unable to create HDFS client", logger.Args("error", err))
 	}
+	logger.Debug("HDFS client is ready")
 	fw := csv.NewWriter(args._Outf)
 	defer args._Outf.Close()
 	defer fw.Flush()
