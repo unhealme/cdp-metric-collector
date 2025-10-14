@@ -1,4 +1,4 @@
-__version__ = "r2025.10.13-1"
+__version__ = "r2025.10.14-0"
 
 
 import argparse
@@ -54,7 +54,7 @@ class Arguments(ARGSBase):
 def open_db(fp: "Path | str"):
     with sqlite3.connect(fp, check_same_thread=False) as conn:
         cursor = conn.executescript(
-            "PRAGMA optimize; PRAGMA journal_mode = WAL; PRAGMA synchronous = NORMAL;"
+            "PRAGMA journal_mode = WAL; PRAGMA synchronous = NORMAL;"
         )
         cursor.executescript("""
         CREATE TABLE IF NOT EXISTS queries (
@@ -82,10 +82,11 @@ def open_db(fp: "Path | str"):
         CREATE INDEX IF NOT EXISTS queries_status_IDX ON queries (status);
         """)
         try:
-            yield cursor
+            yield conn, cursor
         finally:
-            cursor.close()
             conn.commit()
+            cursor.execute("PRAGMA optimize")
+            cursor.close()
 
 
 async def get_row_csv(
@@ -311,7 +312,7 @@ async def main(_args: "Sequence[str] | None" = None):
                 if args.sql_output:
                     if not args.output:
                         args.parser.error("sql output must have '-o' set")
-                    with open_db(args.output) as cursor:
+                    with open_db(args.output) as (conn, cursor):
                         async for rows in export_data(
                             c,
                             args.start_time,
@@ -324,6 +325,8 @@ async def main(_args: "Sequence[str] | None" = None):
                                 "(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                                 rows,
                             )
+                            conn.commit()
+
                 else:
                     csv.field_size_limit(sys.maxsize)
                     with TextIOWrapper(

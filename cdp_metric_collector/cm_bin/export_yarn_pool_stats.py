@@ -1,4 +1,4 @@
-__version__ = "r2025.10.01-4"
+__version__ = "r2025.10.14-0"
 
 
 import csv
@@ -135,7 +135,7 @@ def fetch_queues_from_file(fp: Path | str):
 def open_db(fp: "Path | str"):
     with sqlite3.connect(fp, check_same_thread=False) as conn:
         cursor = conn.executescript(
-            "PRAGMA optimize; PRAGMA journal_mode = WAL; PRAGMA synchronous = NORMAL;"
+            "PRAGMA journal_mode = WAL; PRAGMA synchronous = NORMAL;"
         )
         cursor.execute("""CREATE TABLE IF NOT EXISTS pool_hourly (
         `timestamp` DATETIME NOT NULL,
@@ -168,8 +168,9 @@ def open_db(fp: "Path | str"):
         try:
             yield cursor
         finally:
-            cursor.close()
             conn.commit()
+            cursor.execute("PRAGMA optimize")
+            cursor.close()
 
 
 async def main(_args: "Sequence[str] | None" = None):
