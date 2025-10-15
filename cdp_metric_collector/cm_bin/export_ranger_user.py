@@ -1,4 +1,4 @@
-__version__ = "r2025.10.01-0"
+__version__ = "r2025.10.15-2"
 
 
 import logging
@@ -27,10 +27,11 @@ prog: str | None = None
 class Arguments(ARGSBase):
     verbose: bool
     parser: ArgumentParser
-    output: str | None
-    diff: str | None
     auth_basic: tuple[str, str] | None
     auth_config: Creds | None
+    diff: str | None
+    file: str | None
+    output: str | None
 
 
 async def paginate(client: RangerClient):
@@ -115,27 +116,32 @@ async def main(_args: "Sequence[str] | None" = None):
         user = config.CM_AUTH.username
         passw = config.CM_AUTH.password
 
-    async with RangerClient(config.RANGER_HOST, user, passw) as c:
-        base = [p async for p in paginate(c)]
+    if args.file:
+        base = json.decode(Path(args.file).read_bytes(), type=list[RangerVXUsers])
+    else:
+        async with RangerClient(config.RANGER_HOST, user, passw) as c:
+            base = [p async for p in paginate(c)]
 
     if args.diff:
         with open(args.output or sys.stdout.fileno(), "w", encoding="utf-8") as f:
             diff = json.decode(Path(args.diff).read_bytes(), type=list[RangerVXUsers])
             with printer(f) as print:
-                print("Count All User : %s -> %s (%s)" % get_diff(base, diff))
+                print("Count All User : %s -> %s (%s)" % get_diff(diff, base))
                 print(
                     "Count User in domain_users : %s -> %s (%s)"
-                    % get_diff_group(base, diff, "domain_users")
+                    % get_diff_group(diff, base, "domain_users")
                 )
                 print()
                 print("New User:")
-                for change in get_changes(base, diff):
+                for change in get_changes(diff, base):
                     print(change)
                 print()
                 print("Modifications:")
-                for mod in get_modification(base, diff):
+                for mod in get_modification(diff, base):
                     print(mod)
     else:
+        if args.file:
+            args.parser.error("'-f' could not run without '--diff'")
         with open(args.output or sys.stdout.fileno(), "wb") as f:
             f.write(json.encode(base))
 
@@ -161,6 +167,13 @@ def parse_args(args: "Sequence[str] | None" = None):
         action="version",
         help="print version",
         version=f"%(prog)s {__version__}",
+    )
+    parser.add_argument(
+        "-f",
+        action="store",
+        help="load current data from FILE",
+        metavar="FILE",
+        dest="file",
     )
     parser.add_argument(
         "-o",
