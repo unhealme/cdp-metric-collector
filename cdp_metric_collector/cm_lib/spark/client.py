@@ -65,15 +65,15 @@ class SparkHistoryClient(KerberosClientBase):
             "GET",
             "api/v1/applications",
             params=params,
-        ) as resp:
-            body = await resp.aread()
-            if resp.status_code >= 400:
+        ) as r:
+            body = await r.aread()
+            if r.status_code >= 400:
                 logger.error(
                     "got response code %s with header: %s",
-                    resp.status_code,
-                    resp.headers,
+                    r.status_code,
+                    r.headers,
                 )
-                raise HTTPNotOK(body.decode())
+                raise HTTPNotOK(r.status_code, r.headers, body.decode())
             return await wrap_async(self.app_dec.decode, body)
 
     async def environment(self, app_id: str):
@@ -84,17 +84,17 @@ class SparkHistoryClient(KerberosClientBase):
                     "GET",
                     f"api/v1/applications/{app_id}/environment",
                     timeout=None,
-                ) as resp:
-                    body = await resp.aread()
-                    if resp.status_code == 404:
+                ) as r:
+                    body = await r.aread()
+                    if r.status_code == 404:
                         raise ApplicationNotFoundError(body.decode())
-                    elif resp.status_code >= 400:
+                    elif r.status_code >= 400:
                         logger.error(
                             "got response code %s with header: %s",
-                            resp.status_code,
-                            resp.headers,
+                            r.status_code,
+                            r.headers,
                         )
-                        raise HTTPNotOK(body.decode())
+                        raise HTTPNotOK(r.status_code, r.headers, body.decode())
                     return await wrap_async(ApplicationEnvironment.decode_json, body)
             except Exception:
                 if retry < 3:

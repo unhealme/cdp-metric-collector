@@ -17,20 +17,24 @@ class NameNodeClient(KerberosClientBase):
 
     async def health_status(self):
         body = b""
+        status_code = -1
+        headers = {}
         for n, host in enumerate(self.nn_hosts):
             async with self.http.stream(
                 "GET", f"{host}/jmx?qry=Hadoop:service=NameNode,name=NameNodeInfo"
-            ) as resp:
-                body = await resp.aread()
-                if resp.status_code >= 400:
+            ) as r:
+                body = await r.aread()
+                if r.status_code >= 400:
                     logger.error(
                         "got response code %s with header: %s using host: %s",
-                        resp.status_code,
-                        resp.headers,
+                        r.status_code,
+                        r.headers,
                         host,
                     )
+                    status_code = r.status_code
+                    headers = r.headers
                     continue
                 if n > 0:
                     self.nn_hosts.insert(0, self.nn_hosts.pop(n))
                 return await wrap_async(DFSHealth.decode_json, body)
-        raise HTTPNotOK(body.decode())
+        raise HTTPNotOK(status_code, headers, body.decode())

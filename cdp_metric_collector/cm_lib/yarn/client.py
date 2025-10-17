@@ -18,20 +18,24 @@ class YARNRMClient(KerberosClientBase):
 
     async def get_application(self, appid: str):
         body = b""
+        status_code = -1
+        headers = {}
         for n, host in enumerate(self.rm_hosts):
             async with self.http.stream(
                 "GET", f"{host}/ws/v1/cluster/apps/{appid}"
-            ) as resp:
-                body = await resp.aread()
-                if resp.status_code >= 400:
+            ) as r:
+                body = await r.aread()
+                if r.status_code >= 400:
                     logger.error(
                         "got response code %s with header: %s using host: %s",
-                        resp.status_code,
-                        resp.headers,
+                        r.status_code,
+                        r.headers,
                         host,
                     )
+                    status_code = r.status_code
+                    headers = r.headers
                     continue
                 if n > 0:
                     self.rm_hosts.insert(0, self.rm_hosts.pop(n))
                 return await wrap_async(YARNApplicationResponse.decode_json, body)
-        raise HTTPNotOK(body.decode())
+        raise HTTPNotOK(status_code, headers, body.decode())
