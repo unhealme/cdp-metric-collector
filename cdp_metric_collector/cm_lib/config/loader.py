@@ -1,11 +1,13 @@
 import logging
 from pathlib import Path
+from typing import Annotated, get_origin
 
-from msgspec import yaml
+from msgspec import UNSET, Struct, yaml
+from msgspec.structs import fields
 
 from cdp_metric_collector.cm_lib import config
 
-from .structs import Config
+from .structs import CMConfig, Config
 
 TYPE_CHECKING = False
 if TYPE_CHECKING:
@@ -26,28 +28,16 @@ def load_all():
 
 def load_with(c: Config):
     config._CONFIG = c
+    set_all(c)
 
-    config.CM_API_VER = c.cm.api_ver
-    config.CM_AUTH = c.cm.auth
-    config.CM_CLUSTER_NAME = c.cm.cluster_name
-    config.FILE_BROWSER_PATH = c.cm.file_browser_path
-    config.CM_HOST = c.cm.host
 
-    config.HDFS_LANDING_PATH = c.hdfs.landing_path
-    config.HDFS_NAMENODE_HOST = c.hdfs.namenode_host
-    config.HDFS_REBALANCE_PATH = c.hdfs.rebalance_path
-    config.HDFS_REBALANCE_ROLE = c.hdfs.rebalance_role
-    config.HDFS_REBALANCE_STATUS = c.hdfs.rebalance_status
-
-    config.FOUNDATION_SCHEMA = c.hive.foundation_schema
-    config.HIVE_URL = c.hive.url
-
-    config.HUEQP_HOST = c.hue.qp_host
-    config.HUE_USER = c.hue.username
-
-    config.RANGER_HOST = c.ranger.host
-    config.SPARK_HISTORY_HOST = c.spark.history_host
-    config.YARN_RM_HOST = c.yarn.rm_host
+def set_all(c: Struct):
+    for f in fields(c):
+        if (v := getattr(c, f.name)) is not UNSET:
+            if get_origin(f.type) is not Annotated:
+                set_all(v)
+            else:
+                setattr(config, f.type.__metadata__[0], v)
 
 
 def save_all():
@@ -57,9 +47,11 @@ def save_all():
         logger.warning("unable to save config due to error: %s", e)
 
 
-def save_auth(auth: "CMAuth"):
+def save_cm_auth(auth: "CMAuth"):
     if fp := auth.path:
         Path(fp).write_bytes(yaml.encode(auth.creds))
         return
+    if config._CONFIG.cm is UNSET:
+        config._CONFIG.cm = CMConfig()
     config._CONFIG.cm.auth = auth.creds
     config.save_all()

@@ -6,7 +6,7 @@ from enum import Enum
 from io import StringIO
 
 from aiohttp import ClientError
-from msgspec import convert
+from msgspec import ValidationError, convert
 
 from cdp_metric_collector.cm_lib import config
 from cdp_metric_collector.cm_lib.cm.api import CMAPIClientBase
@@ -90,15 +90,19 @@ class CMAPIClient(CMAPIClientBase):
                         "sortReverse": "false",
                     },
                 ) as r:
-                    data = StringIO(await r.text(), newline="")
-                with data:
-                    for row in csv.DictReader(data, restkey="_"):
-                        yield convert(row, FileBrowserPath)
+                    buf = StringIO(await r.text(), newline="")
+                with buf:
+                    for row in csv.DictReader(buf, restkey="_"):
+                        try:
+                            yield convert(row, FileBrowserPath)
+                        except ValidationError:
+                            logger.error("unable to parse response: %s", buf.getvalue())  # noqa: TRY400
+                            raise
                 break
             except ClientError:
                 logger.warning("connection error retries %s", rt, exc_info=True)
                 rt += 1
-                await asleep(5)
+                await asleep(3)
 
     async def health_issues(self):
         async with self.request(

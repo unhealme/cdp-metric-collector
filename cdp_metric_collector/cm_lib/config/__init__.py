@@ -3,12 +3,12 @@ __all__ = (
     "load_all",
     "load_with",
     "save_all",
-    "save_auth",
+    "save_cm_auth",
 )
 
 
 from .loader import CONFIG_PATH as PATH
-from .loader import load_all, load_with, save_all, save_auth
+from .loader import load_all, load_with, save_all, save_cm_auth
 
 TYPE_CHECKING = False
 if TYPE_CHECKING:

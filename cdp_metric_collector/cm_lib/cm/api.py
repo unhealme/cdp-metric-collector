@@ -65,7 +65,7 @@ class CMAPIClientBase(APIClientBase):
     ):
         await super().__aexit__(exc_type, exc_val, exc_tb)
         if not (isinstance(exc_val, HTTPNotOK) and exc_val.status == 401):
-            config.save_auth(self.auth)
+            config.save_cm_auth(self.auth)
 
     async def initialize(self):
         await self.get_cookies()
@@ -75,6 +75,9 @@ class CMAPIClientBase(APIClientBase):
         if session := self.auth.creds.session:
             logger.debug("using %r as session authentication", session)
             self.http.cookie_jar.update_cookies({"SESSION": session})
+            logger.debug("checking session vailidity")
+            async with self.request("GET", "/api/v1/clusters"):
+                pass
             return
         elif header := self.auth.creds.header:
             logger.debug("using %r as token authentication", header)

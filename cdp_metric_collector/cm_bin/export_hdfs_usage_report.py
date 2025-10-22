@@ -1,4 +1,4 @@
-__version__ = "b2025.10.01-0"
+__version__ = "r2025.10.22-0"
 
 
 import csv
