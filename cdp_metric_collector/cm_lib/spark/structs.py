@@ -12,6 +12,11 @@ class ApplicationAttempt(Struct):
     completed: bool
     startTimeEpoch: int
     endTimeEpoch: int
+    appSparkVersion: str
+
+    @property
+    def appSparkMajorVersion(self):
+        return ".".join(self.appSparkVersion.split(".")[:3])
 
     @property
     def startTime(self):
@@ -22,7 +27,7 @@ class ApplicationAttempt(Struct):
         return datetime.fromtimestamp(self.endTimeEpoch / 1000)
 
     @property
-    def duration_parsed(self):
+    def durationParsed(self):
         return str(timedelta(seconds=self.duration / 1000))
 
 

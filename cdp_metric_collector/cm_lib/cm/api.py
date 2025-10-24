@@ -76,7 +76,7 @@ class CMAPIClientBase(APIClientBase):
             logger.debug("using %r as session authentication", session)
             self.http.cookie_jar.update_cookies({"SESSION": session})
             logger.debug("checking session vailidity")
-            async with self.request("GET", "/api/v1/clusters"):
+            async with self.request("GET", "/api/v1/clusters", ssl=False):
                 pass
             return
         elif header := self.auth.creds.header:

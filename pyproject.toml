@@ -6,20 +6,20 @@ build-backend = "hatchling.build"
 name = "cdp-metric-collector"
 description = "Cloudera CDP Metric Collector"
 dynamic = ["version"]
-readme = "DONTREADME.md"
+readme = "README.md"
 maintainers = [{ name = "unhealme", email = "o2tongpethuk@gmail.com" }]
 requires-python = ">=3.11"
 dependencies = [
     "aiohttp[speedups]",
-    "hdfs;sys_platform=='win32'",
-    "hdfs[kerberos];sys_platform!='win32'",
-    "httpx-gssapi",
+    "hdfs",
     "httpx[http2]",
-    "impyla;sys_platform=='win32'",
-    "impyla[kerberos];sys_platform!='win32'",
+    "impyla",
     "msgspec[yaml]",
     "uvloop;sys_platform!='win32'",
 ]
+
+[project.optional-dependencies]
+kerberos = ["hdfs[kerberos]", "httpx-gssapi", "impyla[kerberos]"]
 
 [dependency-groups]
 dev = ["ruff"]

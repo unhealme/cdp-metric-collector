@@ -44,7 +44,7 @@ HUE_USER: str
 RANGER_HOST: str
 
 # SPARK
-SPARK_HISTORY_HOST: str
+SPARK_HISTORY_HOST: list[str]
 
 # YARN
 YARN_RM_HOST: list[str]

@@ -1,14 +1,14 @@
-__version__ = "b2025.10.01-0"
+__version__ = "r2025.10.24-4"
 
 
 import argparse
-import asyncio
 import csv
 import logging
 import sys
+from asyncio.locks import Semaphore
+from asyncio.tasks import as_completed
 from datetime import datetime
 from io import TextIOWrapper
-from pathlib import Path
 
 from cdp_metric_collector.cm_lib import config
 from cdp_metric_collector.cm_lib.hdfs import HDFSClient
@@ -33,16 +33,28 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 prog: str | None = None
 
-
 Row = tuple[ConvertibleToString, ...]
+
+
+class Arguments(ARGSBase):
+    verbose: bool
+    status: AppStatus | None
+    min_date: datetime | None
+    max_date: datetime | None
+    limit: int | None
+    output: str | None
+    fast_mode: bool
+    with_sql: bool
 
 
 async def process_app(
     spark: SparkHistoryClient,
     hdfs: HDFSClient,
     fast_mode: bool,
+    with_sql: bool,
     app: SparkApplication,
 ) -> list[Row]:
+    logger.debug("processing %s", app.id)
     if not fast_mode:
         try:
             env = await spark.environment(app.id)
@@ -52,38 +64,43 @@ async def process_app(
     else:
         env = ApplicationEnvironment.new()
     result: list[Row] = []
-    for attempt in app.attempts:
-        sqlc = 0
-        async for sql in hdfs.spark_sql(app.id):
-            sqlc += 1
+    for attempt_id, attempt in enumerate(app.attempts, 1):
+        c = 0
+        if with_sql:
+            async for sql in hdfs.spark_sql(app.id):
+                c += 1
+                result.append(
+                    (
+                        attempt.appSparkMajorVersion,
+                        app.id,
+                        attempt_id,
+                        attempt.startTime.isoformat(" "),
+                        attempt.endTime.isoformat(" "),
+                        attempt.sparkUser,
+                        env.get_yarn_queue(),
+                        attempt.completed,
+                        attempt.durationParsed,
+                        sql.executionId,
+                        sql.physicalPlanDescription,
+                    )
+                )
+            logger.debug("found %s sql in app id %s", c, app.id)
+        if c < 1:
             result.append(
                 (
+                    attempt.appSparkMajorVersion,
                     app.id,
+                    attempt_id,
                     attempt.startTime.isoformat(" "),
                     attempt.endTime.isoformat(" "),
                     attempt.sparkUser,
                     env.get_yarn_queue(),
                     attempt.completed,
-                    attempt.duration_parsed,
-                    sql.executionId,
-                    sql.physicalPlanDescription,
-                )
-            )
-        if sqlc < 1:
-            result.append(
-                (
-                    app.id,
-                    attempt.startTime.isoformat(" "),
-                    attempt.endTime.isoformat(" "),
-                    attempt.sparkUser,
-                    env.get_yarn_queue(),
-                    attempt.completed,
-                    attempt.duration_parsed,
+                    attempt.durationParsed,
                     "",
                     "",
                 )
             )
-        logger.debug("found %s sql in app id %s", sqlc, app.id)
     return result
 
 
@@ -91,51 +108,45 @@ async def main(_args: "Sequence[str] | None" = None):
     args = parse_args(_args)
     setup_logging(("cdp_metric_collector",), debug=args.verbose)
     logger.debug("got args %s", args)
-
     config.load_all()
+    sem = Semaphore(4)
+
+    async def processor(app: SparkApplication):
+        async with sem:
+            return await process_app(spark, hdfs, args.fast_mode, args.with_sql, app)
+
     with TextIOWrapper(
-        open(args.output, "wb", 0),
+        open(args.output or sys.stdout.fileno(), "wb", 0),
         newline="",
         encoding="utf-8",
         write_through=True,
     ) as f:
         fw = csv.writer(f)
+        fw.writerow(
+            (
+                "Application ID",
+                "Start Time",
+                "End Time",
+                "User",
+                "Queue",
+                "Completed",
+                "Elapsed Time",
+                "Query No",
+                "Query Plan",
+            )
+        )
         hdfs = HDFSClient(";".join(config.HDFS_NAMENODE_HOST))
-        async with SparkHistoryClient(config.SPARK_HISTORY_HOST) as spark:
-            fw.writerow(
-                (
-                    "Application ID",
-                    "Start Time",
-                    "End Time",
-                    "User",
-                    "Queue",
-                    "Completed",
-                    "Elapsed Time",
-                    "Query No",
-                    "Query Plan",
+        for host in config.SPARK_HISTORY_HOST:
+            async with SparkHistoryClient(host) as spark:
+                apps = await spark.applications(
+                    args.status,
+                    args.min_date,
+                    args.max_date,
+                    limit=args.limit,
                 )
-            )
-            apps = await spark.applications(
-                args.status,
-                args.min_date,
-                args.max_date,
-                limit=args.limit,
-            )
-            logger.debug("fetched %s applications", len(apps))
-            for rows in asyncio.as_completed(
-                process_app(spark, hdfs, args.fast_mode, x) for x in apps
-            ):
-                fw.writerows(await rows)
-
-
-class Arguments(ARGSBase):
-    verbose: bool
-    status: AppStatus
-    min_date: datetime | None
-    max_date: datetime | None
-    limit: int | None
-    output: Path | int
-    fast_mode: bool
+                logger.debug("fetched %s applications", len(apps))
+                for rows in as_completed([processor(x) for x in apps]):
+                    fw.writerows(await rows)
 
 
 def parse_args(args: "Sequence[str] | None" = None):
@@ -164,8 +175,6 @@ def parse_args(args: "Sequence[str] | None" = None):
         action="store",
         help="dump result to FILE instead of stdout",
         metavar="FILE",
-        type=Path,
-        default=sys.stdout.fileno(),
         dest="output",
     )
     parser.add_argument(
@@ -174,8 +183,13 @@ def parse_args(args: "Sequence[str] | None" = None):
         help="enable fast mode (currently disable collection for field: Queue)",
         dest="fast_mode",
     )
+    parser.add_argument(
+        "--no-sql",
+        action="store_false",
+        help="don't try to get query plan for job",
+        dest="with_sql",
+    )
     param = parser.add_argument_group("query params")
-    param.set_defaults(status=AppStatus.COMPLETED)
     param.add_argument(
         "--from",
         action="store",
@@ -200,10 +214,17 @@ def parse_args(args: "Sequence[str] | None" = None):
         dest="limit",
     )
     param.add_argument(
-        "--all",
+        "--running",
         action="store_const",
-        help="export running apps too",
+        help="only export running apps",
         const=AppStatus.RUNNING,
+        dest="status",
+    )
+    param.add_argument(
+        "--completed",
+        action="store_const",
+        help="only export completed apps",
+        const=AppStatus.COMPLETED,
         dest="status",
     )
     return parser.parse_args(args, Arguments())

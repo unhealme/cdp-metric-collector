@@ -99,7 +99,7 @@ class SparkHistoryClient(KerberosClientBase):
             except Exception:
                 if retry < 3:
                     logger.info("connection error retries %s", retry)
-                    logger.debug("", exc_info=True)
+                    logger.debug("exception is:", exc_info=True)
                     retry += 1
                     await asleep(5)
                 else:

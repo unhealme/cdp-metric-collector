@@ -37,7 +37,7 @@ class RangerConfig(Struct):
 
 
 class SparkConfig(Struct):
-    history_host: Annotated[str | UnsetType, "SPARK_HISTORY_HOST"] = UNSET
+    history_host: Annotated[list[str] | UnsetType, "SPARK_HISTORY_HOST"] = UNSET
 
 
 class YARNConfig(Struct):
