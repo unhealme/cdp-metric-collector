@@ -22,7 +22,7 @@ dependencies = [
 kerberos = ["hdfs[kerberos]", "httpx-gssapi", "impyla[kerberos]"]
 
 [dependency-groups]
-dev = ["ruff"]
+dev = ["httpx-gssapi", "ruff"]
 
 [tool.hatch.version]
 path = "cdp_metric_collector/__init__.py"
