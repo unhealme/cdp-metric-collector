@@ -1,4 +1,4 @@
-__version__ = "r2025.12.22-2"
+__version__ = "r2025.12.22-3"
 
 
 import csv
@@ -255,6 +255,7 @@ def parse_args(args: "Sequence[str] | None" = None):
         help="mode to use (currently available: HOURLY, 10MIN)",
         type=parse_method,
         default="HOURLY",
+        metavar="MODE",
         dest="method_pair",
     )
     parser.add_argument(
