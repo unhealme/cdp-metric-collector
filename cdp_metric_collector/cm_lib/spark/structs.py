@@ -13,6 +13,7 @@ class ApplicationAttempt(Struct):
     startTimeEpoch: int
     endTimeEpoch: int
     appSparkVersion: str
+    attemptId: str | None = None
 
     @property
     def appSparkMajorVersion(self):

@@ -59,6 +59,7 @@ def create_parsers(
 
 def parse(_args: "Sequence[str] | None" = None):
     modules: dict[str, Any] = {
+        "alert": {"cm-hosts": Module(".alert_cm_hosts")},
         "auto": {
             "hdfs-rebalance": Module(".auto_hdfs_rebalance"),
             "yqm-config": Module(".auto_yqm_config"),

@@ -1,4 +1,4 @@
-__version__ = "r2025.10.24-4"
+__version__ = "r2025.11.10-1"
 
 
 import argparse
@@ -55,16 +55,18 @@ async def process_app(
     app: SparkApplication,
 ) -> list[Row]:
     logger.debug("processing %s", app.id)
-    if not fast_mode:
-        try:
-            env = await spark.environment(app.id)
-        except ApplicationNotFoundError:
-            logger.debug("unable to get environment for app id %s", app.id)
-            return []
-    else:
-        env = ApplicationEnvironment.new()
+
+    async def get_env(attempt_id: str | None = None):
+        if not fast_mode:
+            try:
+                return await spark.environment(app.id, attempt_id)
+            except ApplicationNotFoundError:
+                logger.debug("unable to get environment for app id %s", app.id)
+        return ApplicationEnvironment.new()
+
     result: list[Row] = []
-    for attempt_id, attempt in enumerate(app.attempts, 1):
+    for attempt in app.attempts:
+        env = await get_env(attempt.attemptId)
         c = 0
         if with_sql:
             async for sql in hdfs.spark_sql(app.id):
@@ -73,7 +75,7 @@ async def process_app(
                     (
                         attempt.appSparkMajorVersion,
                         app.id,
-                        attempt_id,
+                        attempt.attemptId,
                         attempt.startTime.isoformat(" "),
                         attempt.endTime.isoformat(" "),
                         attempt.sparkUser,
@@ -90,7 +92,7 @@ async def process_app(
                 (
                     attempt.appSparkMajorVersion,
                     app.id,
-                    attempt_id,
+                    attempt.attemptId,
                     attempt.startTime.isoformat(" "),
                     attempt.endTime.isoformat(" "),
                     attempt.sparkUser,
@@ -124,7 +126,9 @@ async def main(_args: "Sequence[str] | None" = None):
         fw = csv.writer(f)
         fw.writerow(
             (
+                "Spark Version",
                 "Application ID",
+                "Attempt ID",
                 "Start Time",
                 "End Time",
                 "User",
@@ -217,14 +221,14 @@ def parse_args(args: "Sequence[str] | None" = None):
         "--running",
         action="store_const",
         help="only export running apps",
-        const=AppStatus.RUNNING,
+        const=AppStatus.running,
         dest="status",
     )
     param.add_argument(
         "--completed",
         action="store_const",
         help="only export completed apps",
-        const=AppStatus.COMPLETED,
+        const=AppStatus.completed,
         dest="status",
     )
     return parser.parse_args(args, Arguments())

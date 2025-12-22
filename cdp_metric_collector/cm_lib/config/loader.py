@@ -13,17 +13,24 @@ TYPE_CHECKING = False
 if TYPE_CHECKING:
     from cdp_metric_collector.cm_lib.cm import CMAuth
 
-CONFIG_PATH = Path.home() / ".config" / "cdp_metric_collector" / "config.yaml"
+CONFIG_PATH = Path.home() / ".config" / "cdp_metric_collector"
 
 logger = logging.getLogger(__name__)
 
 
 def load_all():
-    try:
-        c = Config.decode_yaml(CONFIG_PATH.read_bytes())
-        load_with(c)
-    except Exception as e:
-        logger.warning("not loading any config due to error: %s", e)
+    global CONFIG_PATH
+    p = CONFIG_PATH
+    exc: Exception | None = None
+    for np in (p / "config.yaml", p / "config.yml"):
+        try:
+            c = Config.decode_yaml(np.read_bytes())
+            CONFIG_PATH = np
+            return load_with(c)
+        except Exception as e:
+            exc = e
+    if exc is not None:
+        logger.warning("not loading any config due to error: %s", exc)
 
 
 def load_with(c: Config):
@@ -34,10 +41,10 @@ def load_with(c: Config):
 def set_all(c: Struct):
     for f in fields(c):
         if (v := getattr(c, f.name)) is not UNSET:
-            if get_origin(f.type) is not Annotated:
-                set_all(v)
-            else:
+            if get_origin(f.type) is Annotated:
                 setattr(config, f.type.__metadata__[0], v)
+            else:
+                set_all(v)
 
 
 def save_all():

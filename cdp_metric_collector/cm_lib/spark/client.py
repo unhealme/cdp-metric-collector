@@ -22,8 +22,8 @@ logger = logging.getLogger(__name__)
 
 
 class AppStatus(Enum):
-    COMPLETED = 0
-    RUNNING = 1
+    completed = 0
+    running = 1
 
     def __str__(self) -> str:
         return f"{self.__class__.name}.{self.name}"
@@ -54,7 +54,7 @@ class SparkHistoryClient(KerberosClientBase):
         for k, v in list(params.items()):
             match v:
                 case AppStatus():
-                    params[k] = v.value
+                    params[k] = v.name
                 case datetime():
                     params[k] = "{:%Y-%m-%dT%H:%M:%S}.{:.0f}GMT".format(
                         v, v.microsecond / 1000
@@ -76,8 +76,10 @@ class SparkHistoryClient(KerberosClientBase):
                 raise HTTPNotOK(r.status_code, r.headers, body.decode())
             return await wrap_async(self.app_dec.decode, body)
 
-    async def environment(self, app_id: str):
+    async def environment(self, app_id: str, attempt_id: str | None = None):
         retry = 1
+        if attempt_id:
+            app_id += f"/{attempt_id}"
         while True:
             try:
                 async with self.http.stream(

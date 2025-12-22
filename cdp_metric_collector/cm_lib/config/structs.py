@@ -12,6 +12,7 @@ class CMConfig(Struct):
     cluster_name: Annotated[str | UnsetType, "CM_CLUSTER_NAME"] = UNSET
     file_browser_path: Annotated[str | UnsetType, "FILE_BROWSER_PATH"] = UNSET
     host: Annotated[str | UnsetType, "CM_HOST"] = UNSET
+    subnet: Annotated[str | UnsetType, "CM_SUBNET"] = UNSET
 
 
 class HDFSConfig(Struct):

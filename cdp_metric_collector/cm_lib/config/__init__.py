@@ -24,6 +24,7 @@ CM_AUTH: "Creds | None" = None
 CM_CLUSTER_NAME: str
 FILE_BROWSER_PATH: str
 CM_HOST: str
+CM_SUBNET: str
 
 # HDFS
 HDFS_LANDING_PATH: str

@@ -1,4 +1,4 @@
-__version__ = "r2025.10.14-0"
+__version__ = "r2025.12.22-0"
 
 
 import csv
@@ -6,15 +6,14 @@ import logging
 import sqlite3
 import sys
 from argparse import (
-    Action,
     ArgumentDefaultsHelpFormatter,
     ArgumentParser,
     BooleanOptionalAction,
-    Namespace,
 )
 from contextlib import contextmanager
 from datetime import datetime, timedelta
 from pathlib import Path
+from typing import TypeAlias
 
 from cdp_metric_collector.cm_lib import config
 from cdp_metric_collector.cm_lib.cm import (
@@ -34,11 +33,12 @@ from cdp_metric_collector.cm_lib.utils import (
 TYPE_CHECKING = False
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable, Sequence
-    from typing import Any
 
 
 logger = logging.getLogger(__name__)
 prog: str | None = None
+
+MethodType: TypeAlias = "Callable[[CMAuth], Awaitable[tuple[TimeData, CMAuth]]]"
 
 
 class Arguments(ARGSWithAuthBase):
@@ -47,32 +47,10 @@ class Arguments(ARGSWithAuthBase):
     verbose: bool
 
     as_csv: bool
-    meth: "Callable[[CMAuth], Awaitable[tuple[TimeData, CMAuth]]]"
+    method_pair: tuple[MethodType, str]
     metrics_file: Path | None
     output: Path | None
     yqm_file: Path | None
-
-
-class MethodParseAction(Action):
-    def __call__(
-        self,
-        parser: ArgumentParser,
-        namespace: Namespace,
-        values: "str | Sequence[Any] | None",
-        option_string: str | None = None,
-    ):
-        match values:
-            case "HOURLY":
-                meth = fetch_metrics_hourly
-                tbl = "pool_hourly"
-            case "10MIN":
-                meth = fetch_metrics_10min
-                tbl = "pool_10min"
-            case _:
-                err = f"invalid meta type: {values}"
-                raise ValueError(err)
-        setattr(namespace, self.dest, meth)
-        namespace._tbl = tbl
 
 
 async def fetch_metrics_hourly(auth: CMAuth):
@@ -180,15 +158,16 @@ async def main(_args: "Sequence[str] | None" = None):
 
     config.load_all()
     auth = args.get_auth()
+    method, table = args.method_pair
     match auth, args.metrics_file, args.yqm_file:
         case CMAuth(), None, None:
-            cm_metric, auth = await args.meth(auth)
+            cm_metric, auth = await method(auth)
             cm_queues = await fetch_queues(auth)
         case CMAuth(), Path() as metrics_file, None:
             cm_metric = TimeData.decode_json(metrics_file.read_bytes())
             cm_queues = await fetch_queues(auth)
         case CMAuth(), None, Path() as yqm_file:
-            cm_metric, auth = await args.meth(auth)
+            cm_metric, auth = await method(auth)
             cm_queues = fetch_queues_from_file(yqm_file)
         case _, Path() as metrics_file, Path() as yqm_file:
             cm_metric = TimeData.decode_json(metrics_file.read_bytes())
@@ -238,6 +217,17 @@ async def main(_args: "Sequence[str] | None" = None):
             )
 
 
+def parse_method(mode: str):
+    match mode.strip().upper():
+        case "HOURLY":
+            return fetch_metrics_hourly, "pool_hourly"
+        case "10MIN":
+            return fetch_metrics_10min, "pool_10min"
+        case _:
+            err = f"invalid mode: {mode}"
+            raise ValueError(err)
+
+
 def parse_args(args: "Sequence[str] | None" = None):
     parser = ArgumentParser(
         prog=prog,
@@ -262,12 +252,11 @@ def parse_args(args: "Sequence[str] | None" = None):
     )
     parser.add_argument(
         "-m",
-        action=MethodParseAction,
         help="mode to use",
         choices=("HOURLY", "10MIN"),
-        type=lambda s: s.strip().upper(),
+        type=parse_method,
         default="HOURLY",
-        dest="meth",
+        dest="method_pair",
     )
     parser.add_argument(
         "-o",
