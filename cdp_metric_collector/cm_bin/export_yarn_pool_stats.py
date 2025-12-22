@@ -1,4 +1,4 @@
-__version__ = "r2025.12.22-0"
+__version__ = "r2025.12.22-2"
 
 
 import csv
@@ -207,7 +207,7 @@ async def main(_args: "Sequence[str] | None" = None):
             args.parser.error("No output file is specified")
         with open_db(args.output) as cursor:
             cursor.executemany(
-                f"insert or ignore into {args._tbl} values "
+                f"insert or ignore into {table} values "
                 "(?, ?, ?, ?, ?, ?, ? ,? ,? ,?, ?, ?)",
                 (
                     data
@@ -252,8 +252,7 @@ def parse_args(args: "Sequence[str] | None" = None):
     )
     parser.add_argument(
         "-m",
-        help="mode to use",
-        choices=("HOURLY", "10MIN"),
+        help="mode to use (currently available: HOURLY, 10MIN)",
         type=parse_method,
         default="HOURLY",
         dest="method_pair",
