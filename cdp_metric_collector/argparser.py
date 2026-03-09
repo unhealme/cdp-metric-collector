@@ -83,6 +83,7 @@ def parse(_args: "Sequence[str] | None" = None):
                 "audit-log": Module(".export_ranger_audit_log"),
                 "last-access": Module(".export_ranger_audit_log"),
                 "mappings": Module(".export_ranger_mapping"),
+                "policies": Module(".export_ranger_policies"),
                 "users": Module(".export_ranger_user"),
             },
             "spark-history": Module(".export_spark_history"),

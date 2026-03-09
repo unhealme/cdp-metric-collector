@@ -22,6 +22,8 @@ class RangerPolicyResource(Struct):
 
 
 class RangerPolicy(Struct):
+    service: str
+    serviceType: str
     isEnabled: bool
     resources: dict[str, RangerPolicyResource]
     policyItems: list[RangerPolicyItem]

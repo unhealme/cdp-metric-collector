@@ -1,10 +1,13 @@
 __all__ = ("abstractmethod",)
 
 
+import sys as _sys
 from abc import ABCMeta as _ABCMeta
 from abc import abstractmethod
-from itertools import chain
-from typing import TYPE_CHECKING, Any, Protocol
+from itertools import chain as _chain
+from typing import TYPE_CHECKING
+from typing import Any as _Any
+from typing import Protocol as _Protocol
 
 if TYPE_CHECKING:
     from cdp_metric_collector.cm_lib.cm.auth import CMAuth
@@ -15,30 +18,36 @@ class ABCMeta(_ABCMeta):
     __slots__: tuple[str, ...]
 
     def __new__(
-        mcls,
+        cls,
         name: str,
         bases: tuple[type, ...],
-        namespace: dict[str, Any],
+        namespace: "dict[str, _Any]",
         /,
-        **kwargs: Any,
+        **kwds: "_Any",
     ):
         if "__slots__" in namespace:
             err = "__slots__ should not be defined"
             raise TypeError(err)
 
-        slots = ()
-        if "__annotations__" in namespace:
-            slots = tuple(x for x in namespace["__annotations__"] if x not in namespace)
+        if _sys.version_info >= (3, 14):
+            from annotationlib import Format
+
+            annotations = {}
+            if callable(annotate := namespace.get("__annotate_func__", None)):
+                annotations = annotate(Format.VALUE)
+        else:
+            annotations = namespace.get("__annotations__", {})
+        slots = tuple(x for x in annotations if x not in namespace)
         namespace["__slots__"] = slots
 
         fields: list[str] = [
             f for b in bases for f in getattr(b, "__repr_fields__", ())
         ]
         if fields:
-            namespace["__repr_fields__"] = tuple(dict.fromkeys(chain(fields, slots)))
+            namespace["__repr_fields__"] = tuple(dict.fromkeys(_chain(fields, slots)))
         else:
             namespace["__repr_fields__"] = slots
-        return super().__new__(mcls, name, bases, namespace, **kwargs)
+        return super().__new__(cls, name, bases, namespace, **kwds)
 
 
 class ABC(metaclass=ABCMeta):
@@ -96,5 +105,5 @@ class ARGSWithAuthBase(ARGSBase):
             return CMAuth(Creds(self.auth_session, user, passw, self.auth_header))
 
 
-class ConvertibleToString(Protocol):
+class ConvertibleToString(_Protocol):
     def __str__(self) -> str: ...

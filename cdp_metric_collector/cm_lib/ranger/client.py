@@ -7,7 +7,7 @@ from cdp_metric_collector.cm_lib.cm import APIClientBase
 from cdp_metric_collector.cm_lib.errors import HTTPNotOK
 from cdp_metric_collector.cm_lib.utils import encode_json_str, wrap_async
 
-from .structs import RangerAccessAudit, RangerPolicyList, RangerUsers
+from .structs import RangerAccessAudit, RangerPolicyList, RangerServiceList, RangerUsers
 
 logger = logging.getLogger(__name__)
 
@@ -58,6 +58,32 @@ class RangerClient(APIClientBase):
                 raise HTTPNotOK(r.status, r.headers, await r.text())
             return await wrap_async(RangerAccessAudit.decode_json, await r.read())
 
+    async def policies_export(
+        self,
+        service_name: list[str] | None = None,
+        service_type: list[str] | None = None,
+        **filters: str,
+    ):
+        params = filters
+        if service_name:
+            params["serviceName"] = ",".join(service_name)
+        if service_type:
+            params["serviceType"] = ",".join(service_type)
+        logger.debug("sending data %s", encode_json_str(params))
+        async with self.http.get(
+            "/service/plugins/policies",
+            params=params,
+            ssl=False,
+        ) as r:
+            if r.status >= 400:
+                logger.error(
+                    "got response code %s with header: %s",
+                    r.status,
+                    r.headers,
+                )
+                raise HTTPNotOK(r.status, r.headers, await r.text())
+            return await wrap_async(RangerPolicyList.decode_json, await r.read())
+
     async def policies(
         self,
         service_type: str,
@@ -86,6 +112,17 @@ class RangerClient(APIClientBase):
                 )
                 raise HTTPNotOK(r.status, r.headers, await r.text())
             return await wrap_async(RangerPolicyList.decode_json, await r.read())
+
+    async def services(self):
+        async with self.http.get("/service/plugins/services", ssl=False) as r:
+            if r.status >= 400:
+                logger.error(
+                    "got response code %s with header: %s",
+                    r.status,
+                    r.headers,
+                )
+                raise HTTPNotOK(r.status, r.headers, await r.text())
+            return await wrap_async(RangerServiceList.decode_json, await r.read())
 
     async def users(
         self,
