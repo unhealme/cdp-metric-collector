@@ -1,4 +1,4 @@
-__version__ = "r2026.03.09-3"
+__version__ = "r2026.03.10-1"
 
 
 import csv
@@ -80,19 +80,19 @@ async def main(_args: "Sequence[str] | None" = None):
             fw = csv.writer(f)
             fw.writerow(HeaderField)
             for p in data.policies:
-                for rt, r in p.resources.items():
-                    for rv in r.values:
-                        for i in p.policyItems:
-                            for a in i.accesses:
-                                access = "Allow" if a.isAllowed else "Deny"
-                                for e, et in chain(
-                                    [(x, "user") for x in i.users],
-                                    [(x, "group") for x in i.groups],
-                                    [(x, "role") for x in i.roles],
-                                ):
-                                    fw.writerow(
-                                        (p.serviceType, rt, rv, et, e, a.type, access)
-                                    )
+                st = p.serviceType
+                r = p.decode_resource()
+                rt = r.type
+                for rv in r.format_values():
+                    for i in p.policyItems:
+                        for a in i.accesses:
+                            access = "Allow" if a.isAllowed else "Deny"
+                            for e, et in chain(
+                                [(x, "user") for x in i.users],
+                                [(x, "group") for x in i.groups],
+                                [(x, "role") for x in i.roles],
+                            ):
+                                fw.writerow((st, rt, rv, et, e, a.type, access))
     else:
         with open(args.output or sys.stdout.fileno(), "wb") as f:
             f.write(json.encode(data))
