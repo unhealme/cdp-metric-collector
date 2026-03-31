@@ -34,7 +34,7 @@ func (a Arguments) ToArgs() []any {
 		args []any
 		v    = reflect.ValueOf(a)
 	)
-	for _, f := range reflect.VisibleFields(reflect.TypeOf(a)) {
+	for _, f := range reflect.VisibleFields(reflect.TypeFor[Arguments]()) {
 		if !strings.HasPrefix(f.Name, "_") {
 			args = append(args, f.Name)
 			args = append(args, fmt.Sprintf("%#v", v.FieldByName(f.Name)))

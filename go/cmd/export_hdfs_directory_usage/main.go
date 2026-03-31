@@ -7,7 +7,7 @@ import (
 	"github.com/unhealme/cdp-metric-collector/go/internal/hdfs"
 )
 
-const Version = "r2025.10.09-0"
+const Version = "r2026.03.30-0"
 
 var (
 	logger = internal.DefaultLogger()
