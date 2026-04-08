@@ -1,4 +1,4 @@
-__version__ = "r2026.03.12-0"
+__version__ = "r2026.04.08-2"
 
 
 import csv
@@ -57,9 +57,10 @@ async def main(_args: "Sequence[str] | None" = None):
     setup_logging(("cdp_metric_collector",), debug=args.verbose)
     logger.debug("parsed args %s", args)
     if args.from_file:
-        data = RangerPolicyList.decode_json(Path(args.from_file).read_bytes())
+        raw = Path(args.from_file).read_bytes()
         args.serialize = True
     else:
+        config.load_all()
         if args.auth_config:
             user = args.auth_config.username
             passw = args.auth_config.password
@@ -70,12 +71,15 @@ async def main(_args: "Sequence[str] | None" = None):
                 args.parser.error("No auth mechanism is passed")
             user = config.CM_AUTH.username
             passw = config.CM_AUTH.password
-        config.load_all()
         async with RangerClient(config.RANGER_HOST, user, passw) as c:
-            data = await fetch_data(c)
+            raw = await fetch_data(c)
     if args.serialize:
+        data = RangerPolicyList.decode_json(raw)
         with open(
-            args.output or sys.stdout.fileno(), "w", encoding="utf-8", newline=""
+            args.output or sys.stdout.fileno(),
+            "w",
+            encoding="utf-8",
+            newline="",
         ) as f:
             fw = csv.writer(f)
             fw.writerow(HeaderField)
@@ -95,7 +99,7 @@ async def main(_args: "Sequence[str] | None" = None):
                                 fw.writerow((st, rt, rv, et, e, a.type, access))
     else:
         with open(args.output or sys.stdout.fileno(), "wb") as f:
-            f.write(json.encode(data))
+            f.write(json.format(raw))
 
 
 def parse_args(args: "Sequence[str] | None" = None):

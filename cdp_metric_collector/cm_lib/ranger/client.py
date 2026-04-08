@@ -71,7 +71,7 @@ class RangerClient(APIClientBase):
             params["serviceType"] = ",".join(service_type)
         logger.debug("sending data %s", encode_json_str(params))
         async with self.http.get(
-            "/service/plugins/policies",
+            "/service/plugins/policies/exportJson",
             params=params,
             ssl=False,
         ) as r:
@@ -82,7 +82,7 @@ class RangerClient(APIClientBase):
                     r.headers,
                 )
                 raise HTTPNotOK(r.status, r.headers, await r.text())
-            return await wrap_async(RangerPolicyList.decode_json, await r.read())
+            return await r.read()
 
     async def policies(
         self,
