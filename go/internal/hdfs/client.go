@@ -27,6 +27,7 @@ func (c *HDFSClient) Walk2(basePath string, dateMin, dateMax time.Time, maxDepth
 			paths, err := c.ReadDir(p)
 			if err != nil {
 				logger.Warn("unable to read path", logger.Args("name", p, "error", err))
+				return
 			}
 			for _, path := range paths {
 				fname := filepath.Join(p, path.Name())

@@ -1,4 +1,4 @@
-__version__ = "r2026.04.08-2"
+__version__ = "r2026.04.08-3"
 
 
 import csv
@@ -37,6 +37,7 @@ HeaderField = (
 class Arguments(ARGSBase):
     verbose: bool
     parser: ArgumentParser
+    service_names: list[str]
     from_file: str | None
     output: str | None
     serialize: bool
@@ -44,10 +45,11 @@ class Arguments(ARGSBase):
     auth_config: Creds | None
 
 
-async def fetch_data(client: RangerClient):
-    services = await client.services()
+async def fetch_data(client: RangerClient, service_names: list[str] | None = None):
+    if not service_names:
+        service_names = [x.name for x in (await client.services()).services]
     return await client.policies_export(
-        [x.name for x in services.services],
+        service_names,
         checkPoliciesExists="true",
     )
 
@@ -72,7 +74,7 @@ async def main(_args: "Sequence[str] | None" = None):
             user = config.CM_AUTH.username
             passw = config.CM_AUTH.password
         async with RangerClient(config.RANGER_HOST, user, passw) as c:
-            raw = await fetch_data(c)
+            raw = await fetch_data(c, args.service_names)
     if args.serialize:
         data = RangerPolicyList.decode_json(raw)
         with open(
@@ -119,6 +121,12 @@ def parse_args(args: "Sequence[str] | None" = None):
         action="version",
         help="print version",
         version=f"%(prog)s {__version__}",
+    )
+    parser.add_argument(
+        "service_names",
+        action="store",
+        metavar="SERVICE_NAME",
+        nargs="*",
     )
     parser.add_argument(
         "-o",

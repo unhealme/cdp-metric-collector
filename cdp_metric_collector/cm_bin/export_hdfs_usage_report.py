@@ -1,4 +1,4 @@
-__version__ = "r2025.10.22-0"
+__version__ = "r2026.04.15-0"
 
 
 import csv
@@ -84,7 +84,7 @@ async def main(_args: "Sequence[str] | None" = None):
         out.writerow(HeaderField)
         async with CMAPIClient(config.CM_HOST, auth) as c:
             for p in args.path:
-                if not Path(p).is_absolute():
+                if not p.startswith("/"):
                     logger.warning("skipping path: %s, path must be absolute", p)
                 first_level = len(Path(p).parents)
                 async for row in fetch_data(c, p):
