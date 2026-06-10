@@ -1,12 +1,9 @@
-import csv
 import logging
 from asyncio.tasks import sleep as asleep
 from datetime import datetime
 from enum import Enum
-from io import StringIO
 
 from aiohttp import ClientError
-from msgspec import ValidationError, convert
 
 from cdp_metric_collector.cm_lib import config
 from cdp_metric_collector.cm_lib.cm.api import CMAPIClientBase
@@ -14,7 +11,7 @@ from cdp_metric_collector.cm_lib.cm.structs import (
     APICommand,
     AuthRoles,
     Commands,
-    FileBrowserPath,
+    FileBrowserResults,
     HealthIssues,
     Hosts,
     TimeData,
@@ -64,41 +61,44 @@ class CMAPIClient(CMAPIClientBase):
 
     async def file_browser(self, path: str):
         rt = 1
+        offset = 0
+        params = {
+            "limit": "100000",
+            "format": "DEFAULT",
+            "path": path,
+            "json": encode_json_str(
+                {
+                    "terms": [
+                        {
+                            "fileSearchType": 12,
+                            "queryText": path,
+                            "negated": False,
+                        }
+                    ]
+                }
+            ),
+            "sortBy": "FILENAME",
+            "sortReverse": "false",
+        }
         while True:
             try:
+                params["offset"] = str(offset)
                 async with self.request(
                     "GET",
                     config.FILE_BROWSER_PATH,
                     ssl=False,
-                    params={
-                        "limit": "0",
-                        "offset": "0",
-                        "format": "CSV",
-                        "path": path,
-                        "json": encode_json_str(
-                            {
-                                "terms": [
-                                    {
-                                        "fileSearchType": 12,
-                                        "queryText": path,
-                                        "negated": False,
-                                    }
-                                ]
-                            }
-                        ),
-                        "sortBy": "FILENAME",
-                        "sortReverse": "false",
-                    },
+                    headers={"Accept": "application/json"},
+                    params=params,
                 ) as r:
-                    buf = StringIO(await r.text(), newline="")
-                with buf:
-                    for row in csv.DictReader(buf, restkey="_"):
-                        try:
-                            yield convert(row, FileBrowserPath)
-                        except ValidationError:
-                            logger.error("unable to parse response: %s", buf.getvalue())  # noqa: TRY400
-                            raise
-                break
+                    file_browser = FileBrowserResults.decode_json(await r.read())
+                if not file_browser.results:
+                    break
+                else:
+                    for rp in file_browser.results:
+                        yield rp
+                if len(file_browser.results) < 100000:
+                    break
+                offset += 100000
             except ClientError:
                 logger.warning("connection error retries %s", rt, exc_info=True)
                 rt += 1

@@ -171,7 +171,7 @@ class Commands(Decodable):
     items: list[APICommand]
 
 
-class FileBrowserPath(DTNoTZ):
+class FileBrowserPathCSV(DTNoTZ):
     Path: str
     Owner: str
     Group: str
@@ -200,3 +200,38 @@ class FileBrowserPath(DTNoTZ):
         yield self.Usage
         yield pretty_size(int(self.Usage, 10))
         yield self.Content
+
+
+class FileBrowserPathJSON(Struct):
+    path: str
+    owner: str
+    group: str
+    mode: int
+    atime: int
+    mtime: int
+    rawSizeWithSnapshot: int
+    sizeWithSnapshot: int
+    fileCount: int
+
+    def is_dir(self):
+        return (self.mode & 0o0170000) == 0o0040000
+
+    def is_file(self):
+        return (self.mode & 0o0170000) == 0o0100000
+
+    def __iter__(self):
+        yield "%o" % self.mode
+        yield self.path
+        yield self.owner
+        yield self.group
+        yield datetime.fromtimestamp(self.atime / 1000).isoformat(" ")
+        yield datetime.fromtimestamp(self.mtime / 1000).isoformat(" ")
+        yield str(self.sizeWithSnapshot)
+        yield pretty_size(self.sizeWithSnapshot)
+        yield str(self.rawSizeWithSnapshot)
+        yield pretty_size(self.rawSizeWithSnapshot)
+        yield str(self.fileCount)
+
+
+class FileBrowserResults(Decodable):
+    results: list[FileBrowserPathJSON]

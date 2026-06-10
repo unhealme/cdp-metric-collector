@@ -16,11 +16,12 @@ def parse_auth(s: str):
 
 
 def pretty_size(s: float):
-    for u in ("Bytes", "KB", "MB", "GB", "TB", "PB", "EB", "ZB"):
-        if s < 1024.0:
-            return "%3.1f %s" % (s, u)
-        s /= 1024.0
-    return "%.1f YB" % s
+    if s < 1024.0:
+        return str(s)
+    for u in ("K", "M", "G", "T", "P", "E", "Z", "Y", "R"):
+        if (s := s / 1024.0) < 1024.0:
+            return "%3.1f%s" % (s, u)
+    return "%.1fQ" % s
 
 
 def strfdelta(tdelta: "timedelta", fmt: str):

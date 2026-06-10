@@ -2,7 +2,7 @@ __all__ = (
     "APICommand",
     "AuthRoles",
     "Commands",
-    "FileBrowserPath",
+    "FileBrowserResults",
     "HealthIssues",
     "Hosts",
     "TimeData",
@@ -13,6 +13,6 @@ __all__ = (
 )
 
 
-from .cm import APICommand, AuthRoles, Commands, FileBrowserPath, HealthIssues, Hosts
+from .cm import APICommand, AuthRoles, Commands, FileBrowserResults, HealthIssues, Hosts
 from .timeseries import TimeData, TimeSeriesPayload
 from .yqm import YarnQMResponse, YQMConfigPayload, YQMConfigProp

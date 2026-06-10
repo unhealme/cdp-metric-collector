@@ -1,4 +1,4 @@
-__version__ = "r2026.04.15-0"
+__version__ = "r2026.06.05-2"
 
 
 import csv
@@ -7,7 +7,6 @@ import sys
 from argparse import ArgumentParser, RawTextHelpFormatter
 from datetime import datetime
 from io import TextIOWrapper
-from pathlib import Path
 
 from cdp_metric_collector.cm_lib import config
 from cdp_metric_collector.cm_lib.cm import CMAPIClient, CMAuth
@@ -43,39 +42,42 @@ class Arguments(ARGSWithAuthBase):
     verbose: bool
     parser: ArgumentParser
     path: list[str]
-    date_older: datetime
-    date_newer: datetime
+    date_older: datetime | None
+    date_newer: datetime | None
     dir_only: bool
-    max_level: int | float
-    output: Path | int
+    max_level: int | None
+    output: str | None
 
 
 async def main(_args: "Sequence[str] | None" = None):
     async def fetch_data(client: CMAPIClient, base_path: str):
-        async for path in client.file_browser(base_path):
-            level = len(Path(path.Path).parents) - first_level
-            if level <= args.max_level:
-                if path.is_dir():
-                    if args.date_newer < path.LastModified < args.date_older:
-                        yield (level, *path)
-                    if level < args.max_level:
-                        async for r in fetch_data(client, path.Path):
+        async for fp in client.file_browser(base_path):
+            level = fp.path.count("/") - first_level
+            mtime = datetime.fromtimestamp(fp.mtime / 1000)
+            if args.max_level is None or level <= args.max_level:
+                if fp.is_dir():
+                    if (args.date_newer is None or args.date_newer < mtime) and (
+                        args.date_older is None or mtime < args.date_older
+                    ):
+                        yield (level, *fp)
+                    if args.max_level is None or level < args.max_level:
+                        async for r in fetch_data(client, fp.path):
                             yield r
                 elif not args.dir_only:
-                    if args.date_newer < path.LastModified < args.date_older:
-                        yield (level, *path)
+                    if (args.date_newer is None or args.date_newer < mtime) and (
+                        args.date_older is None or mtime < args.date_older
+                    ):
+                        yield (level, *fp)
 
     args = parse_args(_args)
     setup_logging(("cdp_metric_collector",), debug=args.verbose)
     logger.debug("got args %s", args)
-    if args.max_level < 0:
-        args.max_level = float("inf")
     config.load_all()
     auth = args.get_auth()
     if not auth:
         args.parser.error("No auth mechanism is passed")
     with TextIOWrapper(
-        open(args.output, "wb", 0),
+        open(args.output or sys.stdout.fileno(), "wb", 0),
         encoding="utf-8",
         newline="",
         write_through=True,
@@ -86,7 +88,7 @@ async def main(_args: "Sequence[str] | None" = None):
             for p in args.path:
                 if not p.startswith("/"):
                     logger.warning("skipping path: %s, path must be absolute", p)
-                first_level = len(Path(p).parents)
+                first_level = p.count("/")
                 async for row in fetch_data(c, p):
                     out.writerow(row)
 
@@ -125,8 +127,7 @@ def parse_args(args: "Sequence[str] | None" = None):
         action="store",
         help="dump result to FILE instead of stdout",
         metavar="FILE",
-        type=Path,
-        default=sys.stdout.fileno(),
+        default=None,
         dest="output",
     )
     parser.add_argument(
@@ -135,7 +136,7 @@ def parse_args(args: "Sequence[str] | None" = None):
         dest="date_older",
         help="file is older than DATE (ISO format)",
         metavar="DATE",
-        default=datetime.max,
+        default=None,
         type=datetime.fromisoformat,
     )
     parser.add_argument(
@@ -144,7 +145,7 @@ def parse_args(args: "Sequence[str] | None" = None):
         dest="date_newer",
         help="file is newer than DATE (ISO format)",
         metavar="DATE",
-        default=datetime.min,
+        default=None,
         type=datetime.fromisoformat,
     )
     parser.add_argument(
@@ -159,8 +160,8 @@ def parse_args(args: "Sequence[str] | None" = None):
         dest="max_level",
         help="maximum path level, default to unlimited",
         metavar="NUM",
-        default=0,
-        type=float,
+        default=None,
+        type=int,
     )
     auth = parser.add_argument_group("authentication")
     auth.add_argument(
